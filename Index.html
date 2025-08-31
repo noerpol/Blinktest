@@ -1,286 +1,100 @@
 <!doctype html>
 <html lang="da">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Blink → Bip (Canvas, no libs)</title>
-<style>
-  :root { --pad:14px; }
-  body{font-family: system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:var(--pad);}
-  .wrap{display:flex;gap:16px;flex-wrap:wrap}
-  canvas,video{border-radius:10px;background:#000}
-  #view{width:320px;height:240px}
-  #panel{min-width:260px;flex:1}
-  button,input[type=range]{width:100%}
-  button{padding:10px 12px;border-radius:8px;border:1px solid #ccc;background:#fff;font-size:16px}
-  .row{margin-top:10px}
-  label{font-size:13px;opacity:.85}
-  .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef;margin-left:6px}
-  small{opacity:.75}
-  #status{margin-top:8px}
-  .hint{font-size:13px;opacity:.9}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Tale-knapper</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      padding: 20px;
+      text-align: center;
+    }
+    h1 { margin-bottom: 20px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 12px;
+      max-width: 600px;
+      margin: 0 auto 20px;
+    }
+    button {
+      font-size: 18px;
+      padding: 16px;
+      border-radius: 10px;
+      border: none;
+      background: #4a90e2;
+      color: white;
+      font-weight: bold;
+      word-wrap: break-word;
+    }
+    button:active {
+      background: #357ab8;
+    }
+    .add-word {
+      margin-top: 20px;
+    }
+    input {
+      font-size: 16px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      width: 60%;
+    }
+    .add-btn {
+      font-size: 16px;
+      padding: 10px 14px;
+      margin-left: 10px;
+      border-radius: 8px;
+      border: none;
+      background: #27ae60;
+      color: white;
+      font-weight: bold;
+    }
+    .add-btn:active {
+      background: #1e8449;
+    }
+  </style>
 </head>
 <body>
-<h1>Blink → Bip (Canvas)</h1>
-<p class="hint">Tryk <b>Start</b>, tryk på <b>venstre øje</b> og derefter <b>højre øje</b> for at sætte to små målefelter.
-Når “edge-tætheden” i felterne falder under tærsklen i et par frames, bipper den.</p>
-
-<div class="wrap">
-  <div>
-    <canvas id="view" width="320" height="240"></canvas>
+  <h1>Tryk på et ord</h1>
+  
+  <div id="grid" class="grid">
+    <button onclick="speak('Ja')">Ja</button>
+    <button onclick="speak('Nej')">Nej</button>
+    <button onclick="speak('Sulten')">Sulten</button>
+    <button onclick="speak('Toilet')">Toilet</button>
+    <button onclick="speak('Far')">Far</button>
+    <button onclick="speak('Mor')">Mor</button>
+    <button onclick="speak('Træt')">Træt</button>
+    <button onclick="speak('Tak')">Tak</button>
+    <button onclick="speak('Hjælp')">Hjælp</button>
   </div>
-  <div id="panel">
-    <button id="startBtn">Start (kamera + lyd)</button>
-    <div id="status">Status: klar</div>
 
-    <div class="row">
-      <button id="resetRoi">Nulstil øje-felter</button>
-      <small>Tip: Godt, jævnt lys og hold hovedet nogenlunde stille.</small>
-    </div>
-
-    <div class="row">
-      <label>Edge-tærskel (pixel-gradient) <span class="pill" id="edgeShow">28</span></label>
-      <input id="edgeThr" type="range" min="8" max="80" step="1" value="28">
-    </div>
-
-    <div class="row">
-      <label>Åben/lukket-tærskel (edge-densitet) <span class="pill" id="densShow">0.055</span></label>
-      <input id="densThr" type="range" min="0.01" max="0.15" step="0.005" value="0.055">
-    </div>
-
-    <div class="row">
-      <label>Hysterese (til at “slippe” blink) <span class="pill" id="hysShow">0.02</span></label>
-      <input id="hys" type="range" min="0.00" max="0.08" step="0.005" value="0.02">
-    </div>
-
-    <div class="row">
-      <label>Min. frames under tærskel <span class="pill" id="minFramesShow">2</span></label>
-      <input id="minFrames" type="range" min="1" max="5" step="1" value="2">
-    </div>
-
-    <div class="row">
-      <label>Lydstyrke <span class="pill" id="volShow">6%</span></label>
-      <input id="volume" type="range" min="0" max="100" step="1" value="6">
-    </div>
-
-    <p class="hint">
-      Hvis den <i>bipper for ofte</i>: skru <b>Åben/lukket-tærsklen</b> op eller <b>Edge-tærsklen</b> op. <br>
-      Hvis den <i>aldrig bipper</i>: skru <b>Åben/lukket-tærsklen</b> ned og sørg for bedre lys.
-    </p>
+  <div class="add-word">
+    <input type="text" id="newWord" placeholder="Skriv et ord...">
+    <button class="add-btn" onclick="addWord()">Tilføj</button>
   </div>
-</div>
 
-<script>
-(() => {
-  const view = document.getElementById('view');
-  const ctx = view.getContext('2d');
-  const startBtn = document.getElementById('startBtn');
-  const resetRoiBtn = document.getElementById('resetRoi');
-  const statusEl = document.getElementById('status');
-  const edgeThrEl = document.getElementById('edgeThr');
-  const densThrEl = document.getElementById('densThr');
-  const hysEl = document.getElementById('hys');
-  const minFramesEl = document.getElementById('minFrames');
-  const volumeEl = document.getElementById('volume');
-  const edgeShow = document.getElementById('edgeShow');
-  const densShow = document.getElementById('densShow');
-  const hysShow  = document.getElementById('hysShow');
-  const minFramesShow = document.getElementById('minFramesShow');
-  const volShow = document.getElementById('volShow');
-
-  function fmt(n,d=3){ return (+n).toFixed(d); }
-
-  // UI updates
-  edgeThrEl.oninput = ()=> edgeShow.textContent = edgeThrEl.value;
-  densThrEl.oninput = ()=> densShow.textContent = fmt(densThrEl.value,3);
-  hysEl.oninput     = ()=> hysShow.textContent  = fmt(hysEl.value,3);
-  minFramesEl.oninput=()=> minFramesShow.textContent=minFramesEl.value;
-  volumeEl.oninput  = ()=> volShow.textContent  = volumeEl.value + '%';
-
-  // Hidden video and offscreen canvas
-  const video = document.createElement('video');
-  video.autoplay = true; video.playsInline = true; video.muted = true;
-
-  const off = document.createElement('canvas');
-  const ofx = off.getContext('2d');
-
-  // Audio (iOS kræver user-gesture)
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  let audioCtx = null;
-  function beep(freq=880, ms=120){
-    if(!audioCtx) return;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    // 0..100 → 0..0.4
-    gain.gain.value = Math.max(0, Math.min(0.4, volumeEl.value/250));
-    osc.frequency.value = freq;
-    osc.connect(gain).connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + ms/1000);
-  }
-
-  // ROI (øje-felter) — vælges ved taps: venstre øje først, så højre
-  let rois = []; // [{x,y,w,h}]
-  const ROI_W = 90, ROI_H = 45; // kan ændres hvis nødvendigt
-  let needClicks = 0;
-
-  function resetRois(){
-    rois = [];
-    needClicks = 2;
-    statusEl.textContent = 'Status: tryk på venstre øje, derefter højre øje.';
-  }
-
-  resetRoiBtn.addEventListener('click', resetRois);
-
-  // Blink detection state
-  let framesUnder = 0, inBlink = false;
-
-  // Edge density i ROI (simpel gradient |dx|+|dy|)
-  function edgeDensity(imgData, rx, ry, rw, rh, edgeThr){
-    const {data, width} = imgData;
-    let count = 0, pixels = 0;
-    // Undlad 1-pixels kant for neighbor-ops
-    const x0 = Math.max(1, rx|0), y0 = Math.max(1, ry|0);
-    const x1 = Math.min(imgData.width-2, (rx+rw)|0);
-    const y1 = Math.min(imgData.height-2, (ry+rh)|0);
-
-    // Downsample: hop 2 px for hastighed
-    for(let y=y0; y<=y1; y+=2){
-      for(let x=x0; x<=x1; x+=2){
-        const i  = (y*width + x)*4;
-        const il = (y*width + (x-1))*4, ir = (y*width + (x+1))*4;
-        const iu = ((y-1)*width + x)*4, id = ((y+1)*width + x)*4;
-
-        // Luma (Rec.601)
-        const gray = (p)=> (p[0]*0.299 + p[1]*0.587 + p[2]*0.114);
-        const g  = gray([data[i], data[i+1], data[i+2]]);
-        const gl = gray([data[il],data[il+1],data[il+2]]);
-        const gr = gray([data[ir],data[ir+1],data[ir+2]]);
-        const gu = gray([data[iu],data[iu+1],data[iu+2]]);
-        const gd = gray([data[id],data[id+1],data[id+2]]);
-
-        const dx = Math.abs(gr - gl);
-        const dy = Math.abs(gd - gu);
-        const mag = dx + dy;
-        if (mag > edgeThr) count++;
-        pixels++;
-      }
+  <script>
+    function speak(text) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "da-DK"; // dansk stemme hvis muligt
+      speechSynthesis.speak(utterance);
     }
-    return pixels ? (count / pixels) : 0;
-  }
 
-  // Draw overlay
-  function drawOverlay(edL, edR){
-    // spejl, så det føles som en selfie
-    ctx.save();
-    ctx.translate(view.width,0);
-    ctx.scale(-1,1);
-    ctx.drawImage(video, 0,0, view.width, view.height);
-    // ROI-bokse
-    ctx.lineWidth = 2;
-    for(let i=0;i<rois.length;i++){
-      const r = rois[i];
-      ctx.strokeStyle = i===0 ? '#5cf' : '#fc5';
-      ctx.strokeRect(r.x, r.y, r.w, r.h);
+    function addWord() {
+      const input = document.getElementById('newWord');
+      const word = input.value.trim();
+      if (word === "") return;
+      
+      const btn = document.createElement('button');
+      btn.textContent = word;
+      btn.onclick = () => speak(word);
+      document.getElementById('grid').appendChild(btn);
+      
+      input.value = "";
     }
-    // HUD
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(8,8, 170, 46);
-    ctx.fillStyle = '#fff';
-    ctx.font = '12px system-ui';
-    ctx.fillText('Edge dens L/R:', 14, 24);
-    ctx.fillText((edL!==null? edL.toFixed(3):'—') + ' / ' + (edR!==null? edR.toFixed(3):'—'), 14, 42);
-    ctx.restore();
-  }
-
-  // Handle taps til ROI placering (i canvas-space, men vi tegner spejlet)
-  view.addEventListener('click', (e)=>{
-    if (needClicks<=0) return;
-    const rect = view.getBoundingClientRect();
-    const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
-    // fordi vi spejler ved tegning, konverter klik så ROI matcher
-    const x = view.width - cx;
-    const y = cy;
-    rois.push({ x: Math.round(x-ROI_W/2), y: Math.round(y-ROI_H/2), w: ROI_W, h: ROI_H });
-    needClicks--;
-    if (needClicks===1) statusEl.textContent = 'Status: tryk nu på højre øje.';
-    if (needClicks===0) statusEl.textContent = 'Status: kører – justér tærskler hvis nødvendigt.';
-  });
-
-  // Main loop
-  function loop(){
-    if (video.readyState >= 2){
-      // Offscreen matcher canvas
-      ofx.save();
-      ofx.translate(off.width,0); ofx.scale(-1,1); // spejlvendt kopi
-      ofx.drawImage(video, 0,0, off.width, off.height);
-      ofx.restore();
-
-      // Læs frame
-      const frame = ofx.getImageData(0,0, off.width, off.height);
-
-      let edL = null, edR = null;
-      const edgeThr = parseFloat(edgeThrEl.value);
-      if (rois.length===2){
-        edL = edgeDensity(frame, rois[0].x, rois[0].y, rois[0].w, rois[0].h, edgeThr);
-        edR = edgeDensity(frame, rois[1].x, rois[1].y, rois[1].w, rois[1].h, edgeThr);
-      }
-
-      // Blink logik (gennemsnit af to øjne)
-      const densThr = parseFloat(densThrEl.value);
-      const hys = parseFloat(hysEl.value);
-      const need = parseInt(minFramesEl.value,10);
-
-      let avg = null;
-      if (edL!==null && edR!==null){
-        avg = (edL + edR) / 2;
-        if (avg < densThr){
-          framesUnder++;
-          if (!inBlink && framesUnder >= need){
-            inBlink = true;
-            beep(880,120);
-          }
-        } else if (avg > densThr + hys){
-          inBlink = false;
-          framesUnder = 0;
-        }
-        statusEl.textContent = `Edge-densitet: ${avg.toFixed(3)} (tærskel ${densThr.toFixed(3)})`;
-      }
-
-      // Tegn synlig canvas med overlay (også spejlet)
-      drawOverlay(edL, edR);
-    }
-    requestAnimationFrame(loop);
-  }
-
-  async function start(){
-    try{
-      if(!audioCtx){ audioCtx = new AudioCtx(); await audioCtx.resume(); }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode:'user', width:{ideal:640}, height:{ideal:480} },
-        audio: false
-      });
-      video.srcObject = stream;
-      await video.play();
-
-      // Sæt canvas-størrelser til videofeed
-      const vw = 320, vh = 240; // kompakt og hurtigt
-      view.width = vw; view.height = vh;
-      off.width = vw; off.height = vh;
-
-      resetRois();
-      statusEl.textContent = 'Status: tryk på venstre øje, derefter højre øje.';
-      loop();
-    }catch(err){
-      console.error(err);
-      statusEl.textContent = 'Fejl: ' + (err && err.message ? err.message : err);
-    }
-  }
-
-  startBtn.addEventListener('click', start);
-})();
-</script>
+  </script>
 </body>
 </html>
