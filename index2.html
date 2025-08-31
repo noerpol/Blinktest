@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Hovedstyret ordtavle (tilt + mund)</title>
 <style>
-  :root{ --gap:10px; --maxw:420px; }
+  :root{ --gap:10px; --maxw:440px; }
   body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:12px}
   h1{font-size:20px;margin:0 0 6px}
   p{margin:6px 0 10px}
@@ -22,29 +22,30 @@
     width:100%; max-width:var(--maxw); margin:0 auto;
   }
   .cell{
-    min-height: clamp(72px, 18vw, 110px);
+    min-height: clamp(72px, 18vw, 114px);
     display:flex; align-items:center; justify-content:center;
     border-radius:12px; border:2px solid #ddd; background:#f7f7f7;
-    font-weight:700; font-size: clamp(18px, 4.5vw, 22px); text-align:center; padding:6px; position:relative;
+    font-weight:700; font-size: clamp(18px, 4.6vw, 22px); text-align:center; padding:6px; position:relative;
   }
   .cell.sel{ outline:4px solid #4a90e2; background:#eaf2fe; border-color:#4a90e2 }
   .cell .del{
     position:absolute; top:6px; right:6px; width:26px; height:26px; border-radius:8px;
-    border:1px solid #ccc; background:#fff; font-weight:700; display:none;
+    border:1px solid #ccc; background:#fff; font-weight:700; display:none; cursor:pointer;
   }
   .cell.custom .del{ display:block; }
 
   .panel{max-width:var(--maxw); margin:10px auto}
   label{font-size:12px;opacity:.85}
-  input[type=range]{width:100%}
+  input[type=range], select{width:100%}
   .pill{display:inline-block;background:#eef;padding:2px 8px;border-radius:999px;margin-left:6px}
   #status{margin:6px 0 8px}
-  button{padding:10px 14px;border-radius:8px;border:1px solid #ccc;background:#fff}
+  button{padding:10px 14px;border-radius:8px;border:1px solid #ccc;background:#fff;cursor:pointer}
 
   .meters{display:flex;gap:8px;font:12px/1.2 system-ui;max-width:var(--maxw);margin:6px auto}
   .meter{background:#eee;border-radius:6px;overflow:hidden;flex:1;height:8px;position:relative}
   .bar{position:absolute;left:50%;top:0;bottom:0;width:2px;background:#4a90e2}
   .barW{left:0}
+
   .row{display:flex;gap:8px; align-items:center; margin:8px 0}
   .row input[type=text]{flex:1; padding:10px; border:1px solid #ccc; border-radius:8px}
   .ok{background:#27ae60;color:#fff;border:none}
@@ -52,7 +53,7 @@
 </head>
 <body>
 <h1>Hovedstyret ordtavle</h1>
-<p>Vip hovedet let <b>til venstre/højre</b> for at skifte felt. Før hovedet <b>tilbage til neutral</b>, og <b>åbn munden</b> i ~3 sek. for at vælge.</p>
+<p>Vip hovedet let <b>til venstre/højre</b> for at skifte felt. Før hovedet <b>tilbage til neutral</b>, og <b>åbn munden</b> i ~3 sek. for at vælge. Tryk <b>Start</b> først.</p>
 
 <div class="cam">
   <video id="video" autoplay playsinline muted></video>
@@ -71,6 +72,8 @@
 <div class="panel">
   <button id="startBtn">Start (kamera + lyd)</button>
   <button id="calBtn">Kalibrér neutral</button>
+  <button id="testVoiceBtn">Test stemme</button>
+  <select id="voiceSel"></select>
   <div id="status">Status: klar</div>
 </div>
 
@@ -89,6 +92,14 @@
   <div class="row">
     <label>Neutral-vindue (grader) <span class="pill" id="neuVal">3.0</span></label>
     <input id="neutralWin" type="range" min="1.0" max="8.0" step="0.5" value="3.0">
+  </div>
+  <div class="row">
+    <label>Hysterese (grader) <span class="pill" id="hysVal">2.0</span></label>
+    <input id="hysDeg" type="range" min="1.0" max="6.0" step="0.5" value="2.0">
+  </div>
+  <div class="row">
+    <label>Dwell før hop (ms) <span class="pill" id="dwellVal">450</span></label>
+    <input id="dwellMs" type="range" min="200" max="1200" step="50" value="450">
   </div>
   <div class="row">
     <label>Mund-åben (forhold) <span class="pill" id="mouthVal">0.32</span></label>
@@ -113,6 +124,9 @@
   const startBtn = document.getElementById('startBtn');
   const calBtn = document.getElementById('calBtn');
   const statusEl = document.getElementById('status');
+  const testVoiceBtn = document.getElementById('testVoiceBtn');
+  const voiceSel = document.getElementById('voiceSel');
+
   const gridEl = document.getElementById('grid');
   const newWordEl = document.getElementById('newWord');
   const addBtn = document.getElementById('addBtn');
@@ -122,98 +136,137 @@
 
   const rollThrEl = document.getElementById('rollThr');
   const neutralWinEl = document.getElementById('neutralWin');
+  const hysDegEl = document.getElementById('hysDeg');
+  const dwellMsEl = document.getElementById('dwellMs');
   const mouthThrEl = document.getElementById('mouthThr');
   const holdSecEl = document.getElementById('holdSec');
+
   const rollVal = document.getElementById('rollVal');
   const neuVal = document.getElementById('neuVal');
+  const hysVal = document.getElementById('hysVal');
+  const dwellVal = document.getElementById('dwellVal');
   const mouthVal = document.getElementById('mouthVal');
   const holdVal = document.getElementById('holdVal');
 
   const fmt=(n,d=1)=> (+n).toFixed(d);
   function updUI(){
     rollVal.textContent = fmt(rollThrEl.value,1);
-    neuVal.textContent = fmt(neutralWinEl.value,1);
-    mouthVal.textContent = (+mouthThrEl.value).toFixed(2);
+    neuVal.textContent  = fmt(neutralWinEl.value,1);
+    hysVal.textContent  = fmt(hysDegEl.value,1);
+    dwellVal.textContent= dwellMsEl.value;
+    mouthVal.textContent= (+mouthThrEl.value).toFixed(2);
     holdVal.textContent = (+holdSecEl.value).toFixed(1);
   }
-  [rollThrEl,neutralWinEl,mouthThrEl,holdSecEl].forEach(el => el.oninput = updUI);
+  [rollThrEl,neutralWinEl,hysDegEl,dwellMsEl,mouthThrEl,holdSecEl].forEach(el => el.oninput = updUI);
   updUI();
 
   // ----- Tale + bip -----
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   let audioCtx = null;
+
   function beep(freq=660,ms=90){
     if(!audioCtx) return;
     const g=audioCtx.createGain(), o=audioCtx.createOscillator();
-    g.gain.value = 0.12; o.frequency.value = freq;
+    g.gain.value = 0.10; o.frequency.value = freq;
     o.connect(g).connect(audioCtx.destination);
     o.start(); o.stop(audioCtx.currentTime + ms/1000);
   }
-  function speak(text){
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'da-DK';
-    speechSynthesis.cancel();
-    speechSynthesis.speak(u);
+
+  let voices = [];
+  let voiceReady = false;
+
+  function loadVoices(){
+    voices = speechSynthesis.getVoices() || [];
+    voiceSel.innerHTML = '';
+    // sorter: dansk først, så nordisk, så samme sprogregion
+    const score = v => v.lang?.toLowerCase().startsWith('da') ? 0 :
+                       v.lang?.toLowerCase().startsWith('nb') || v.lang?.toLowerCase().startsWith('no') || v.lang?.toLowerCase().startsWith('sv') ? 1 :
+                       v.lang?.toLowerCase().startsWith('en') ? 2 : 3;
+    voices.sort((a,b)=> score(a)-score(b));
+    voices.forEach((v,i)=>{
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `${v.name} (${v.lang})`;
+      voiceSel.appendChild(opt);
+    });
+    // vælg bedste bud
+    const idxDa = voices.findIndex(v=> v.lang?.toLowerCase().startsWith('da'));
+    voiceSel.value = idxDa >= 0 ? idxDa : 0;
+    voiceReady = voices.length > 0;
   }
+
+  function ensureSpeechReady(){
+    // på iOS hjælper det at kalde resume efter et user-klik
+    try { speechSynthesis.resume(); } catch(e){}
+    if (!voiceReady) loadVoices();
+  }
+
+  window.speechSynthesis.onvoiceschanged = () => loadVoices();
+
+  function speak(text){
+    ensureSpeechReady();
+    if (!voices.length){
+      // Fallback: bip hvis ingen stemmer
+      beep(520,140);
+      return;
+    }
+    const u = new SpeechSynthesisUtterance(text);
+    const i = parseInt(voiceSel.value,10);
+    if (voices[i]) u.voice = voices[i];
+    u.lang = voices[i]?.lang || 'da-DK';
+    u.rate = 1.0; u.pitch = 1.0; u.volume = 1.0;
+    speechSynthesis.cancel();
+    // lille forsinkelse kan hjælpe i iOS
+    setTimeout(()=> speechSynthesis.speak(u), 0);
+  }
+
+  testVoiceBtn.onclick = ()=> speak('Test af stemme');
 
   // ----- Ord / grid (med localStorage) -----
   const DEFAULT_WORDS = ["Ja","Nej","Sulten","Toilet","Far","Mor","Træt","Tak","Hjælp"];
   function loadWords(){
     try{
-      const raw = localStorage.getItem('headboard_words');
+      const raw = localStorage.getItem('headboard_words_v2');
       if(!raw) return DEFAULT_WORDS.slice();
       const arr = JSON.parse(raw);
       if(Array.isArray(arr) && arr.length) return arr;
       return DEFAULT_WORDS.slice();
     }catch{ return DEFAULT_WORDS.slice(); }
   }
-  function saveWords(){ localStorage.setItem('headboard_words', JSON.stringify(words)); }
+  function saveWords(){ localStorage.setItem('headboard_words_v2', JSON.stringify(words)); }
 
   let words = loadWords();
+  let cells = [];
   function renderGrid(){
     gridEl.innerHTML = '';
     words.forEach((w,i)=>{
       const div = document.createElement('div');
       div.className = 'cell' + (i>=DEFAULT_WORDS.length ? ' custom' : '');
       div.textContent = w;
-      const idx=i;
-      if (idx>=DEFAULT_WORDS.length){
+      if (i>=DEFAULT_WORDS.length){
         const del = document.createElement('button');
         del.className = 'del'; del.textContent='✕';
-        del.onclick = (e)=>{ e.stopPropagation(); words.splice(idx,1); saveWords(); renderGrid(); ensureIndexInRange(); focusCell(); };
+        del.onclick = (e)=>{ e.stopPropagation(); words.splice(i,1); saveWords(); renderGrid(); ensureIndex(); focusCell(); };
         div.appendChild(del);
       }
       gridEl.appendChild(div);
     });
     cells = [...gridEl.querySelectorAll('.cell')];
   }
-
-  let cells = [];
   renderGrid();
 
   addBtn.onclick = () => {
     const t = newWordEl.value.trim();
     if(!t) return;
-    words.push(t); saveWords(); renderGrid();
-    newWordEl.value=''; ensureIndexInRange(); focusCell();
+    words.push(t); saveWords(); renderGrid(); newWordEl.value=''; ensureIndex(); focusCell();
   };
 
-  // Navigation: lineær gennem alle felter (3 kolonner i css, men logik = én liste)
+  // Navigation (lineær)
   let idx = 0;
-  function ensureIndexInRange(){ if (idx<0) idx=0; if (idx>=words.length) idx=words.length-1; }
-  function focusCell(){
-    cells.forEach(c=>c.classList.remove('sel'));
-    if (cells[idx]) cells[idx].classList.add('sel');
-  }
+  function ensureIndex(){ if (idx<0) idx=0; if (idx>=words.length) idx=words.length-1; }
+  function focusCell(){ cells.forEach(c=>c.classList.remove('sel')); if(cells[idx]) cells[idx].classList.add('sel'); }
   focusCell();
-
-  function move(delta){ // -1 venstre, +1 højre (lineært, wrap)
-    if (!cells.length) return;
-    idx = (idx + delta + cells.length) % cells.length;
-    focusCell();
-    beep(660,90);
-    lastMoveTime = performance.now();
-  }
+  function move(delta){ if(!cells.length) return; idx = (idx + delta + cells.length) % cells.length; focusCell(); beep(660,80); }
 
   // ----- Canvas size -----
   function sizeCanvas(){
@@ -229,34 +282,33 @@
 
   let fm=null, cam=null;
 
-  // roll (tilt) ud fra linjen mellem øjen-hjørner
-  let rollBase = 0;            // neutral (kalibreret)
-  let rollLP = 0;              // low-pass filtreret
+  // roll (tilt) ud fra øjen-linje
+  let rollBase = 0;           // neutral (kalibreret)
+  let rollLP = 0;             // low-pass filtreret
   let mouthOpenSince = null;
-  let lastMoveTime = 0;
-  const MOVE_COOLDOWN_MS = 350; // anti-spam
+
+  // kontrol-state for “ét hop pr. tilt”
+  let tiltState = 'NEUTRAL'; // NEUTRAL -> TILTING_RIGHT/LEFT (dwell) -> MOVED -> (kræver neutral) -> NEUTRAL
+  let tiltDir = 0;           // -1 venstre, +1 højre
+  let tiltStartTime = 0;
 
   function rollFrom(lm){
     const L=lm[IDX.leftEyeOuter], R=lm[IDX.rightEyeOuter];
-    const rad = Math.atan2(R.y - L.y, R.x - L.x); // 0 = vandret, + når højre øje er lavere
-    return rad;
+    return Math.atan2(R.y - L.y, R.x - L.x); // rad
   }
-  function deg(rad){ return rad * 180 / Math.PI; }
+  const deg = rad => rad*180/Math.PI;
 
   function setRollBar(rad){
-    // vis -15..+15 grader
     const d = Math.max(-15, Math.min(15, deg(rad - rollBase)));
-    const px = (d/30 + 0.5)*100;
-    rollBar.style.left = px + '%';
+    const px = (d/30 + 0.5)*100; rollBar.style.left = px + '%';
   }
-  function setMouthBar(ratio){
-    const px = Math.max(0, Math.min(100, (ratio/0.6)*100));
-    mouthBar.style.width = px + '%';
-  }
+  function setMouthBar(r){ mouthBar.style.width = Math.max(0,Math.min(100,(r/0.6)*100)) + '%'; }
 
   async function start(){
     try{
       if(!audioCtx){ audioCtx = new AudioCtx(); await audioCtx.resume(); }
+      ensureSpeechReady();
+
       const stream = await navigator.mediaDevices.getUserMedia({ video:{facingMode:'user', width:{ideal:640}, height:{ideal:480}}, audio:false });
       video.srcObject = stream; await video.play(); sizeCanvas();
 
@@ -268,8 +320,8 @@
       cam.start();
 
       statusEl.textContent = 'Status: kører – vip hovedet for at skifte felt. Til neutral for valg.';
-      // auto-kalibrér første sekund
-      rollBase = 0; rollLP = 0; autoCalibrating = true; calSamples = 0; calSum = 0;
+      // autokalibrer kort
+      autoCalibrating = true; calSamples = 0; calSum = 0; rollBase = 0; rollLP = 0;
     }catch(e){
       console.error(e);
       statusEl.textContent = 'Fejl: ' + (e?.message || e);
@@ -279,10 +331,7 @@
 
   // Kalibrering
   let autoCalibrating = false, calSamples = 0, calSum = 0;
-  calBtn.onclick = () => {
-    autoCalibrating = true; calSamples=0; calSum=0;
-    statusEl.textContent = 'Kalibrerer neutral… hold hovedet neutralt i et sekund.';
-  };
+  calBtn.onclick = () => { autoCalibrating=true; calSamples=0; calSum=0; statusEl.textContent='Kalibrerer neutral… hold hovedet neutralt.'; };
 
   function onResults(res){
     const w=overlay.width, h=overlay.height;
@@ -293,13 +342,11 @@
     }
     const lm = res.multiFaceLandmarks[0];
 
-    // roll
+    // roll, filtrering
     const roll = rollFrom(lm);
-    // low-pass
-    const alpha = 0.15; // smoothing
+    const alpha = 0.12; // stærkere smoothing
     rollLP = rollLP ? (rollLP + alpha*(roll - rollLP)) : roll;
 
-    // auto kalibrering de første ~1s (ca. 30 samples)
     if (autoCalibrating){
       calSum += rollLP; calSamples++;
       if (calSamples >= 30){
@@ -313,42 +360,62 @@
 
     setRollBar(rollLP);
 
-    // tilt-navigation (kun venstre/højre)
-    const now = performance.now();
     const tiltDeg = deg(rollLP - rollBase);
-    const thr = +rollThrEl.value;       // fx 7°
-    const dead = +neutralWinEl.value;   // neutral vindue ±N°
+    const thr = +rollThrEl.value;         // fx 7°
+    const dead = +neutralWinEl.value;     // neutral vindue ±N°
+    const hys = +hysDegEl.value;          // hysterese
+    const dwell = +dwellMsEl.value;       // ms
 
-    if (now - lastMoveTime >= MOVE_COOLDOWN_MS){
-      if (tiltDeg > thr){ move(+1); }
-      else if (tiltDeg < -thr){ move(-1); }
+    const now = performance.now();
+    const inNeutral = Math.abs(tiltDeg) <= dead;
+
+    // --- Edge-triggered + dwell + hysterese ---
+    switch (tiltState) {
+      case 'NEUTRAL':
+        if (tiltDeg > thr){ tiltState='TILTING_RIGHT'; tiltDir=+1; tiltStartTime=now; }
+        else if (tiltDeg < -thr){ tiltState='TILTING_LEFT'; tiltDir=-1; tiltStartTime=now; }
+        break;
+      case 'TILTING_RIGHT':
+      case 'TILTING_LEFT':
+        // afbryd hvis vi falder under (thr - hys)
+        if ((tiltDir===+1 && tiltDeg < (thr - hys)) ||
+            (tiltDir===-1 && tiltDeg > (-thr + hys))) {
+          tiltState='NEUTRAL';
+          break;
+        }
+        // trig når holdt henover threshold i dwell ms
+        if (now - tiltStartTime >= dwell){
+          move(tiltDir); // ét hop
+          tiltState='MOVED';
+        }
+        break;
+      case 'MOVED':
+        // kræv fuld neutral før ny bevægelse
+        if (inNeutral) tiltState='NEUTRAL';
+        break;
     }
 
-    // mund-åben kun når vi er i neutral vindue
+    // mund-åben ratio (kun i neutral)
     const ML=lm[61], MR=lm[291], MU=lm[13], MD=lm[14];
     const ratio = (Math.hypot(MU.x-MD.x, MU.y-MD.y)) / (Math.hypot(ML.x-MR.x, ML.y-MR.y)+1e-6);
     setMouthBar(ratio);
 
-    const inNeutral = Math.abs(tiltDeg) <= dead;
-    const needMs = (+holdSecEl.value) * 1000;
+    const needMs = (+holdSecEl.value)*1000;
     const mThr = +mouthThrEl.value;
 
-    if(inNeutral && ratio > mThr){
+    if (inNeutral && ratio > mThr){
       if(!mouthOpenSince) mouthOpenSince = now;
       const held = now - mouthOpenSince;
       statusEl.textContent = `Neutral ✓  |  Åben mund: ${(held/1000).toFixed(1)}s / ${(needMs/1000).toFixed(1)}s`;
       if (held >= needMs){
         mouthOpenSince = null;
         const text = words[idx];
-        speak(text); // <-- siger ordet
+        speak(text);
         statusEl.textContent = `Valgt: ${text}`;
-        lastMoveTime = now; // lille lås
       }
     } else {
       mouthOpenSince = null;
-      if (!inNeutral){
-        statusEl.textContent = `Vip: ${tiltDeg.toFixed(1)}°  (Neutral ±${dead}°)`;
-      }
+      if (!inNeutral) statusEl.textContent = `Vip: ${tiltDeg.toFixed(1)}°  (Neutral ±${dead}°)`;
     }
   }
 })();
