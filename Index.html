@@ -3,98 +3,175 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Tale-knapper</title>
+  <title>Tale-knapper (med piktogrammer)</title>
   <style>
     body {
       font-family: system-ui, -apple-system, Segoe UI, sans-serif;
       padding: 20px;
       text-align: center;
     }
-    h1 { margin-bottom: 20px; }
+    h1 { margin-bottom: 18px; }
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
       gap: 12px;
-      max-width: 600px;
-      margin: 0 auto 20px;
+      max-width: 700px;
+      margin: 0 auto 18px;
     }
-    button {
-      font-size: 18px;
-      padding: 16px;
-      border-radius: 10px;
+    button.card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 16px 10px;
+      border-radius: 12px;
       border: none;
       background: #4a90e2;
-      color: white;
-      font-weight: bold;
-      word-wrap: break-word;
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
     }
-    button:active {
-      background: #357ab8;
+    button.card:active { background: #357ab8; }
+    .emo { font-size: 38px; line-height: 1; }
+    .label { font-size: 18px; word-wrap: break-word; }
+
+    .add-area {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 10px;
+      max-width: 700px;
+      margin: 0 auto;
     }
-    .add-word {
-      margin-top: 20px;
-    }
-    input {
+    .add-area input {
       font-size: 16px;
       padding: 10px;
       border: 1px solid #ccc;
-      border-radius: 8px;
-      width: 60%;
+      border-radius: 10px;
+      width: 100%;
     }
     .add-btn {
       font-size: 16px;
       padding: 10px 14px;
-      margin-left: 10px;
-      border-radius: 8px;
+      border-radius: 10px;
       border: none;
       background: #27ae60;
-      color: white;
-      font-weight: bold;
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
     }
-    .add-btn:active {
-      background: #1e8449;
-    }
+    .add-btn:active { background: #1e8449; }
+
+    .hint { font-size: 13px; opacity: .8; margin: 10px auto 0; max-width: 700px; }
   </style>
 </head>
 <body>
   <h1>Tryk på et ord</h1>
-  
-  <div id="grid" class="grid">
-    <button onclick="speak('Ja')">Ja</button>
-    <button onclick="speak('Nej')">Nej</button>
-    <button onclick="speak('Sulten')">Sulten</button>
-    <button onclick="speak('Toilet')">Toilet</button>
-    <button onclick="speak('Far')">Far</button>
-    <button onclick="speak('Mor')">Mor</button>
-    <button onclick="speak('Træt')">Træt</button>
-    <button onclick="speak('Tak')">Tak</button>
-    <button onclick="speak('Hjælp')">Hjælp</button>
-  </div>
 
-  <div class="add-word">
-    <input type="text" id="newWord" placeholder="Skriv et ord...">
-    <button class="add-btn" onclick="addWord()">Tilføj</button>
+  <div id="grid" class="grid"></div>
+
+  <div class="add-area">
+    <input type="text" id="emojiInput" placeholder="Emoji (fx 😊 eller 🚽)" inputmode="text" maxlength="4">
+    <input type="text" id="textInput" placeholder="Skriv et ord …" />
+    <button class="add-btn" id="addBtn">Tilføj</button>
   </div>
+  <p class="hint">Tip: Du kan copy-paste en emoji fra tastaturet. Klik på knappen for at få ordet læst op.</p>
 
   <script>
+    // ---- Tale ----
     function speak(text) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = "da-DK"; // dansk stemme hvis muligt
-      speechSynthesis.speak(utterance);
+      try { speechSynthesis.resume(); } catch(e){}
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "da-DK";
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
     }
 
-    function addWord() {
-      const input = document.getElementById('newWord');
-      const word = input.value.trim();
-      if (word === "") return;
-      
-      const btn = document.createElement('button');
-      btn.textContent = word;
-      btn.onclick = () => speak(word);
-      document.getElementById('grid').appendChild(btn);
-      
-      input.value = "";
+    // ---- Knap-model ----
+    const initialButtons = [
+      { emoji: "👍", text: "Ja" },
+      { emoji: "👎", text: "Nej" },
+      { emoji: "🍔", text: "Sulten" },
+      { emoji: "🚽", text: "Toilet" },
+      { emoji: "👨", text: "Far" },
+      { emoji: "👩", text: "Mor" },
+      { emoji: "😴", text: "Træt" },
+      { emoji: "🙏", text: "Tak" },
+      { emoji: "🆘", text: "Hjælp" }
+    ];
+
+    // Gem/indlæs fra localStorage så nye knapper bevares
+    const LS_KEY = "talk_buttons_v1";
+    function loadButtons() {
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (!raw) return initialButtons.slice();
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) && arr.length ? arr : initialButtons.slice();
+      } catch {
+        return initialButtons.slice();
+      }
     }
+    function saveButtons() {
+      localStorage.setItem(LS_KEY, JSON.stringify(buttons));
+    }
+
+    let buttons = loadButtons();
+
+    // ---- Render ----
+    const grid = document.getElementById("grid");
+    function render() {
+      grid.innerHTML = "";
+      buttons.forEach(({emoji, text}) => {
+        const btn = document.createElement("button");
+        btn.className = "card";
+        btn.setAttribute("aria-label", text);
+        btn.innerHTML = `<span class="emo">${escapeHtml(emoji || "")}</span><span class="label">${escapeHtml(text)}</span>`;
+        btn.onclick = () => speak(text);
+        grid.appendChild(btn);
+      });
+    }
+
+    // Simpel HTML-escape (så brugere ikke kan indsætte tags via tekstfeltet)
+    function escapeHtml(str) {
+      return (str + "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    render();
+
+    // ---- Tilføj-knap ----
+    const emojiInput = document.getElementById("emojiInput");
+    const textInput  = document.getElementById("textInput");
+    const addBtn     = document.getElementById("addBtn");
+
+    function addWord() {
+      const emoji = (emojiInput.value || "").trim();
+      const text  = (textInput.value  || "").trim();
+      if (!text) return; // kræver i det mindste et ord
+
+      // Valider emoji en smule (tillad tom, eller 1-2 tegn)
+      if (emoji.length > 4) {
+        alert("Emoji feltet bør højst være et par tegn.");
+        return;
+      }
+
+      buttons.push({ emoji, text });
+      saveButtons();
+      render();
+
+      emojiInput.value = "";
+      textInput.value  = "";
+      textInput.focus();
+    }
+
+    addBtn.addEventListener("click", addWord);
+    textInput.addEventListener("keydown", (e)=>{ if (e.key === "Enter") addWord(); });
+    emojiInput.addEventListener("keydown", (e)=>{ if (e.key === "Enter") addWord(); });
   </script>
 </body>
 </html>
