@@ -3,20 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Hovedstyret ordtavle (mobil)</title>
+<title>Hovedstyret ordtavle (tilt + mund)</title>
 <style>
   :root{ --gap:10px; --maxw:420px; }
   body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:12px}
   h1{font-size:20px;margin:0 0 6px}
   p{margin:6px 0 10px}
-  /* Kameravisning – kompakt og sticky, så knapper altid kan ses */
+
   .cam{
     position: sticky; top: 6px; z-index: 1;
     width: 100%; max-width: var(--maxw); margin: 0 auto 10px;
     aspect-ratio: 4 / 3; border-radius: 12px; overflow: hidden; background:#000;
   }
   .cam video,.cam canvas{position:absolute; inset:0; width:100%; height:100%; object-fit:cover}
-  /* Grid med 3×3 knapper */
+
   .grid{
     display:grid; grid-template-columns:repeat(3,1fr); gap:var(--gap);
     width:100%; max-width:var(--maxw); margin:0 auto;
@@ -25,25 +25,34 @@
     min-height: clamp(72px, 18vw, 110px);
     display:flex; align-items:center; justify-content:center;
     border-radius:12px; border:2px solid #ddd; background:#f7f7f7;
-    font-weight:700; font-size: clamp(18px, 4.5vw, 22px); text-align:center; padding:6px;
+    font-weight:700; font-size: clamp(18px, 4.5vw, 22px); text-align:center; padding:6px; position:relative;
   }
   .cell.sel{ outline:4px solid #4a90e2; background:#eaf2fe; border-color:#4a90e2 }
-  /* Kontroller – små, kompakte */
+  .cell .del{
+    position:absolute; top:6px; right:6px; width:26px; height:26px; border-radius:8px;
+    border:1px solid #ccc; background:#fff; font-weight:700; display:none;
+  }
+  .cell.custom .del{ display:block; }
+
   .panel{max-width:var(--maxw); margin:10px auto}
   label{font-size:12px;opacity:.85}
   input[type=range]{width:100%}
   .pill{display:inline-block;background:#eef;padding:2px 8px;border-radius:999px;margin-left:6px}
   #status{margin:6px 0 8px}
   button{padding:10px 14px;border-radius:8px;border:1px solid #ccc;background:#fff}
+
   .meters{display:flex;gap:8px;font:12px/1.2 system-ui;max-width:var(--maxw);margin:6px auto}
   .meter{background:#eee;border-radius:6px;overflow:hidden;flex:1;height:8px;position:relative}
   .bar{position:absolute;left:50%;top:0;bottom:0;width:2px;background:#4a90e2}
   .barW{left:0}
+  .row{display:flex;gap:8px; align-items:center; margin:8px 0}
+  .row input[type=text]{flex:1; padding:10px; border:1px solid #ccc; border-radius:8px}
+  .ok{background:#27ae60;color:#fff;border:none}
 </style>
 </head>
 <body>
 <h1>Hovedstyret ordtavle</h1>
-<p>Se mod kameraet. Venstre/højre bevægelse skifter kolonne, op/ned skifter række. Åbn <b>munden</b> i ~3 sek. for at vælge. Tryk <b>Start</b> først.</p>
+<p>Vip hovedet let <b>til venstre/højre</b> for at skifte felt. Før hovedet <b>tilbage til neutral</b>, og <b>åbn munden</b> i ~3 sek. for at vælge.</p>
 
 <div class="cam">
   <video id="video" autoplay playsinline muted></video>
@@ -51,193 +60,295 @@
 </div>
 
 <div class="meters">
-  <div style="flex:1">Yaw<div class="meter"><div id="yawBar" class="bar"></div></div></div>
-  <div style="flex:1">Pitch<div class="meter"><div id="pitchBar" class="bar barW"></div></div></div>
-  <div style="flex:1">Mund<div class="meter"><div id="mouthBar" class="bar barW"></div></div></div>
+  <div style="flex:1">Tilt (roll)
+    <div class="meter"><div id="rollBar" class="bar"></div></div>
+  </div>
+  <div style="flex:1">Mund
+    <div class="meter"><div id="mouthBar" class="bar barW"></div></div>
+  </div>
 </div>
 
 <div class="panel">
   <button id="startBtn">Start (kamera + lyd)</button>
+  <button id="calBtn">Kalibrér neutral</button>
   <div id="status">Status: klar</div>
 </div>
 
-<div class="grid" id="grid">
-  <div class="cell">Ja</div>
-  <div class="cell">Nej</div>
-  <div class="cell">Sulten</div>
-  <div class="cell">Toilet</div>
-  <div class="cell">Far</div>
-  <div class="cell">Mor</div>
-  <div class="cell">Træt</div>
-  <div class="cell">Tak</div>
-  <div class="cell">Hjælp</div>
-</div>
+<div id="grid" class="grid"></div>
 
 <div class="panel">
-  <div>
-    <label>Yaw-tærskel <span class="pill" id="yawVal">0.060</span></label>
-    <input id="yawThr" type="range" min="0.02" max="0.12" step="0.002" value="0.060">
+  <div class="row">
+    <input id="newWord" type="text" placeholder="Tilføj ord …">
+    <button id="addBtn" class="ok">Tilføj</button>
   </div>
-  <div>
-    <label>Pitch-tærskel <span class="pill" id="pitchVal">0.055</span></label>
-    <input id="pitchThr" type="range" min="0.02" max="0.12" step="0.002" value="0.055">
+
+  <div class="row">
+    <label>Tilt-tærskel (grader) <span class="pill" id="rollVal">7.0</span></label>
+    <input id="rollThr" type="range" min="3" max="15" step="0.5" value="7">
   </div>
-  <div>
+  <div class="row">
+    <label>Neutral-vindue (grader) <span class="pill" id="neuVal">3.0</span></label>
+    <input id="neutralWin" type="range" min="1.0" max="8.0" step="0.5" value="3.0">
+  </div>
+  <div class="row">
     <label>Mund-åben (forhold) <span class="pill" id="mouthVal">0.32</span></label>
     <input id="mouthThr" type="range" min="0.15" max="0.60" step="0.01" value="0.32">
   </div>
-  <div>
+  <div class="row">
     <label>Holdetid (sek.) <span class="pill" id="holdVal">3.0</span></label>
     <input id="holdSec" type="range" min="1" max="5" step="0.5" value="3">
   </div>
 </div>
 
-<!-- RIGTIGE MediaPipe UMD-filer -->
+<!-- MediaPipe (UMD) -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 
 <script>
 (() => {
+  // ----- UI -----
   const video = document.getElementById('video');
   const overlay = document.getElementById('overlay');
   const ctx = overlay.getContext('2d');
   const startBtn = document.getElementById('startBtn');
+  const calBtn = document.getElementById('calBtn');
   const statusEl = document.getElementById('status');
-  const yawBar = document.getElementById('yawBar');
-  const pitchBar = document.getElementById('pitchBar');
+  const gridEl = document.getElementById('grid');
+  const newWordEl = document.getElementById('newWord');
+  const addBtn = document.getElementById('addBtn');
+
+  const rollBar = document.getElementById('rollBar');
   const mouthBar = document.getElementById('mouthBar');
 
-  const yawThrEl = document.getElementById('yawThr');
-  const pitchThrEl = document.getElementById('pitchThr');
+  const rollThrEl = document.getElementById('rollThr');
+  const neutralWinEl = document.getElementById('neutralWin');
   const mouthThrEl = document.getElementById('mouthThr');
   const holdSecEl = document.getElementById('holdSec');
-  const yawVal = document.getElementById('yawVal');
-  const pitchVal = document.getElementById('pitchVal');
+  const rollVal = document.getElementById('rollVal');
+  const neuVal = document.getElementById('neuVal');
   const mouthVal = document.getElementById('mouthVal');
   const holdVal = document.getElementById('holdVal');
 
-  const gridEl = document.getElementById('grid');
-  const cells = [...gridEl.querySelectorAll('.cell')];
-  let r=0,c=0; function focus(){ cells.forEach(x=>x.classList.remove('sel')); cells[r*3+c].classList.add('sel'); } focus();
+  const fmt=(n,d=1)=> (+n).toFixed(d);
+  function updUI(){
+    rollVal.textContent = fmt(rollThrEl.value,1);
+    neuVal.textContent = fmt(neutralWinEl.value,1);
+    mouthVal.textContent = (+mouthThrEl.value).toFixed(2);
+    holdVal.textContent = (+holdSecEl.value).toFixed(1);
+  }
+  [rollThrEl,neutralWinEl,mouthThrEl,holdSecEl].forEach(el => el.oninput = updUI);
+  updUI();
 
-  const fmt = (n,d=3)=> (+n).toFixed(d);
-  function updUI(){ yawVal.textContent=fmt(yawThrEl.value); pitchVal.textContent=fmt(pitchThrEl.value); mouthVal.textContent=fmt(mouthThrEl.value,2); holdVal.textContent=(+holdSecEl.value).toFixed(1); }
-  [yawThrEl,pitchThrEl,mouthThrEl,holdSecEl].forEach(el=> el.oninput = updUI); updUI();
+  // ----- Tale + bip -----
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  let audioCtx = null;
+  function beep(freq=660,ms=90){
+    if(!audioCtx) return;
+    const g=audioCtx.createGain(), o=audioCtx.createOscillator();
+    g.gain.value = 0.12; o.frequency.value = freq;
+    o.connect(g).connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + ms/1000);
+  }
+  function speak(text){
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'da-DK';
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  }
 
-  // Sticky canvas size
+  // ----- Ord / grid (med localStorage) -----
+  const DEFAULT_WORDS = ["Ja","Nej","Sulten","Toilet","Far","Mor","Træt","Tak","Hjælp"];
+  function loadWords(){
+    try{
+      const raw = localStorage.getItem('headboard_words');
+      if(!raw) return DEFAULT_WORDS.slice();
+      const arr = JSON.parse(raw);
+      if(Array.isArray(arr) && arr.length) return arr;
+      return DEFAULT_WORDS.slice();
+    }catch{ return DEFAULT_WORDS.slice(); }
+  }
+  function saveWords(){ localStorage.setItem('headboard_words', JSON.stringify(words)); }
+
+  let words = loadWords();
+  function renderGrid(){
+    gridEl.innerHTML = '';
+    words.forEach((w,i)=>{
+      const div = document.createElement('div');
+      div.className = 'cell' + (i>=DEFAULT_WORDS.length ? ' custom' : '');
+      div.textContent = w;
+      const idx=i;
+      if (idx>=DEFAULT_WORDS.length){
+        const del = document.createElement('button');
+        del.className = 'del'; del.textContent='✕';
+        del.onclick = (e)=>{ e.stopPropagation(); words.splice(idx,1); saveWords(); renderGrid(); ensureIndexInRange(); focusCell(); };
+        div.appendChild(del);
+      }
+      gridEl.appendChild(div);
+    });
+    cells = [...gridEl.querySelectorAll('.cell')];
+  }
+
+  let cells = [];
+  renderGrid();
+
+  addBtn.onclick = () => {
+    const t = newWordEl.value.trim();
+    if(!t) return;
+    words.push(t); saveWords(); renderGrid();
+    newWordEl.value=''; ensureIndexInRange(); focusCell();
+  };
+
+  // Navigation: lineær gennem alle felter (3 kolonner i css, men logik = én liste)
+  let idx = 0;
+  function ensureIndexInRange(){ if (idx<0) idx=0; if (idx>=words.length) idx=words.length-1; }
+  function focusCell(){
+    cells.forEach(c=>c.classList.remove('sel'));
+    if (cells[idx]) cells[idx].classList.add('sel');
+  }
+  focusCell();
+
+  function move(delta){ // -1 venstre, +1 højre (lineært, wrap)
+    if (!cells.length) return;
+    idx = (idx + delta + cells.length) % cells.length;
+    focusCell();
+    beep(660,90);
+    lastMoveTime = performance.now();
+  }
+
+  // ----- Canvas size -----
   function sizeCanvas(){
-    const rect = video.getBoundingClientRect();
+    const rect = overlay.getBoundingClientRect();
     overlay.width = rect.width * devicePixelRatio;
     overlay.height = rect.height * devicePixelRatio;
   }
   window.addEventListener('resize', sizeCanvas);
 
-  // Audio feedback + tale
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  let audioCtx = null;
-  function beep(freq=880,ms=120){
-    if(!audioCtx) return;
-    const g=audioCtx.createGain(), o=audioCtx.createOscillator();
-    g.gain.value = 0.12; o.frequency.value=freq;
-    o.connect(g).connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+ms/1000);
-  }
-  function speak(text){ const u=new SpeechSynthesisUtterance(text); u.lang='da-DK'; speechSynthesis.cancel(); speechSynthesis.speak(u); }
-
-  // Helpers
-  const IDX={ nose:4, leftEyeOuter:33, rightEyeOuter:263, mouthLeft:61, mouthRight:291, mouthUp:13, mouthDown:14 };
+  // ----- MediaPipe -----
+  const IDX = { leftEyeOuter:33, rightEyeOuter:263, mouthLeft:61, mouthRight:291, mouthUp:13, mouthDown:14 };
   const dist=(a,b)=> Math.hypot(a.x-b.x, a.y-b.y);
 
-  let lastMove=0;
-  function tryMove(dr,dc){
-    const now = performance.now();
-    if (now - lastMove < 350) return;
-    const nr=Math.max(0,Math.min(2,r+dr)), nc=Math.max(0,Math.min(2,c+dc));
-    if(nr!==r || nc!==c){ r=nr; c=nc; focus(); beep(660,90); lastMove=now; }
-  }
-
-  let mouthOpenSince=null;
-
-  function setYawBar(v){ const cl=Math.max(-0.15,Math.min(0.15,v)); const px=(cl/0.30+0.5)*100; yawBar.style.left=px+'%'; }
-  function setPitchBar(v){ pitchBar.style.width=Math.max(0,Math.min(100,(Math.abs(v)/0.15)*100))+'%'; }
-  function setMouthBar(v){ mouthBar.style.width=Math.max(0,Math.min(100,(v/0.6)*100))+'%'; }
-
-  // MediaPipe
   let fm=null, cam=null;
+
+  // roll (tilt) ud fra linjen mellem øjen-hjørner
+  let rollBase = 0;            // neutral (kalibreret)
+  let rollLP = 0;              // low-pass filtreret
+  let mouthOpenSince = null;
+  let lastMoveTime = 0;
+  const MOVE_COOLDOWN_MS = 350; // anti-spam
+
+  function rollFrom(lm){
+    const L=lm[IDX.leftEyeOuter], R=lm[IDX.rightEyeOuter];
+    const rad = Math.atan2(R.y - L.y, R.x - L.x); // 0 = vandret, + når højre øje er lavere
+    return rad;
+  }
+  function deg(rad){ return rad * 180 / Math.PI; }
+
+  function setRollBar(rad){
+    // vis -15..+15 grader
+    const d = Math.max(-15, Math.min(15, deg(rad - rollBase)));
+    const px = (d/30 + 0.5)*100;
+    rollBar.style.left = px + '%';
+  }
+  function setMouthBar(ratio){
+    const px = Math.max(0, Math.min(100, (ratio/0.6)*100));
+    mouthBar.style.width = px + '%';
+  }
 
   async function start(){
     try{
-      if(!audioCtx){ audioCtx=new AudioCtx(); await audioCtx.resume(); }
-
+      if(!audioCtx){ audioCtx = new AudioCtx(); await audioCtx.resume(); }
       const stream = await navigator.mediaDevices.getUserMedia({ video:{facingMode:'user', width:{ideal:640}, height:{ideal:480}}, audio:false });
-      video.srcObject=stream; await video.play(); sizeCanvas();
+      video.srcObject = stream; await video.play(); sizeCanvas();
 
-      fm = new FaceMesh({
-        locateFile: (f)=> `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`
-      });
+      fm = new FaceMesh({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}` });
       fm.setOptions({ maxNumFaces:1, refineLandmarks:true, selfieMode:true, minDetectionConfidence:0.5, minTrackingConfidence:0.5 });
       fm.onResults(onResults);
 
       cam = new Camera(video, { onFrame: async()=>{ await fm.send({image:video}); }, width: 320, height: 240 });
       cam.start();
 
-      statusEl.textContent='Status: kører – bevæg hovedet for at flytte fokus. Åbn munden for at vælge.';
+      statusEl.textContent = 'Status: kører – vip hovedet for at skifte felt. Til neutral for valg.';
+      // auto-kalibrér første sekund
+      rollBase = 0; rollLP = 0; autoCalibrating = true; calSamples = 0; calSum = 0;
     }catch(e){
       console.error(e);
-      statusEl.textContent='Fejl: '+(e?.message||e);
+      statusEl.textContent = 'Fejl: ' + (e?.message || e);
     }
   }
   startBtn.addEventListener('click', start);
 
-  function drawPoints(lm){
-    const w=overlay.width, h=overlay.height;
-    ctx.clearRect(0,0,w,h);
-    ctx.save(); ctx.scale(w,h);
-    const pts=[IDX.leftEyeOuter,IDX.rightEyeOuter,IDX.mouthLeft,IDX.mouthRight,IDX.mouthUp,IDX.mouthDown,IDX.nose];
-    ctx.fillStyle='rgba(255,255,255,.9)';
-    for(const i of pts){ const p=lm[i]; ctx.beginPath(); ctx.arc(p.x,p.y,0.012,0,Math.PI*2); ctx.fill(); }
-    ctx.restore();
-  }
+  // Kalibrering
+  let autoCalibrating = false, calSamples = 0, calSum = 0;
+  calBtn.onclick = () => {
+    autoCalibrating = true; calSamples=0; calSum=0;
+    statusEl.textContent = 'Kalibrerer neutral… hold hovedet neutralt i et sekund.';
+  };
 
   function onResults(res){
+    const w=overlay.width, h=overlay.height;
+    ctx.clearRect(0,0,w,h);
+
     if(!res.multiFaceLandmarks || !res.multiFaceLandmarks.length){
       statusEl.textContent='Status: Finder ikke ansigt – prøv bedre lys/tættere på.'; return;
     }
     const lm = res.multiFaceLandmarks[0];
-    drawPoints(lm);
 
-    const L=lm[IDX.leftEyeOuter], R=lm[IDX.rightEyeOuter];
-    const mid={x:(L.x+R.x)/2, y:(L.y+R.y)/2}, eyeDist=dist(L,R)+1e-6;
-    const N=lm[IDX.nose];
-    const yaw=(N.x-mid.x)/eyeDist;       // venstre<0, højre>0
-    const pitch=(N.y-mid.y)/eyeDist;     // ned>0, op<0
-    setYawBar(yaw); setPitchBar(pitch);
+    // roll
+    const roll = rollFrom(lm);
+    // low-pass
+    const alpha = 0.15; // smoothing
+    rollLP = rollLP ? (rollLP + alpha*(roll - rollLP)) : roll;
 
-    const yawThr=+yawThrEl.value, pitchThr=+pitchThrEl.value;
-    if(yaw> yawThr) tryMove(0,+1);
-    if(yaw<-yawThr) tryMove(0,-1);
-    if(pitch> pitchThr) tryMove(+1,0);
-    if(pitch<-pitchThr) tryMove(-1,0);
+    // auto kalibrering de første ~1s (ca. 30 samples)
+    if (autoCalibrating){
+      calSum += rollLP; calSamples++;
+      if (calSamples >= 30){
+        rollBase = calSum / calSamples;
+        autoCalibrating = false;
+        statusEl.textContent = 'Neutral sat. Klar.';
+      } else {
+        statusEl.textContent = 'Kalibrerer…';
+      }
+    }
 
-    // Mund-åben ratio
-    const ML=lm[IDX.mouthLeft], MR=lm[IDX.mouthRight], MU=lm[IDX.mouthUp], MD=lm[IDX.mouthDown];
-    const ratio = dist(MU,MD) / (dist(ML,MR)+1e-6);
+    setRollBar(rollLP);
+
+    // tilt-navigation (kun venstre/højre)
+    const now = performance.now();
+    const tiltDeg = deg(rollLP - rollBase);
+    const thr = +rollThrEl.value;       // fx 7°
+    const dead = +neutralWinEl.value;   // neutral vindue ±N°
+
+    if (now - lastMoveTime >= MOVE_COOLDOWN_MS){
+      if (tiltDeg > thr){ move(+1); }
+      else if (tiltDeg < -thr){ move(-1); }
+    }
+
+    // mund-åben kun når vi er i neutral vindue
+    const ML=lm[61], MR=lm[291], MU=lm[13], MD=lm[14];
+    const ratio = (Math.hypot(MU.x-MD.x, MU.y-MD.y)) / (Math.hypot(ML.x-MR.x, ML.y-MR.y)+1e-6);
     setMouthBar(ratio);
 
-    const thr=+mouthThrEl.value, needMs=(+holdSecEl.value)*1000;
-    if(ratio>thr){
-      if(!mouthOpenSince) mouthOpenSince=performance.now();
-      const held=performance.now()-mouthOpenSince;
-      statusEl.textContent=`Åben mund: ${(held/1000).toFixed(1)}s / ${(+holdSecEl.value).toFixed(1)}s`;
-      if(held>=needMs){
-        mouthOpenSince=null;
-        const text=cells[r*3+c].textContent.trim();
-        beep(880,140); speak(text);
-        statusEl.textContent=`Valgt: ${text}`;
-        lastMove=performance.now(); // lille cooldown
+    const inNeutral = Math.abs(tiltDeg) <= dead;
+    const needMs = (+holdSecEl.value) * 1000;
+    const mThr = +mouthThrEl.value;
+
+    if(inNeutral && ratio > mThr){
+      if(!mouthOpenSince) mouthOpenSince = now;
+      const held = now - mouthOpenSince;
+      statusEl.textContent = `Neutral ✓  |  Åben mund: ${(held/1000).toFixed(1)}s / ${(needMs/1000).toFixed(1)}s`;
+      if (held >= needMs){
+        mouthOpenSince = null;
+        const text = words[idx];
+        speak(text); // <-- siger ordet
+        statusEl.textContent = `Valgt: ${text}`;
+        lastMoveTime = now; // lille lås
       }
-    }else{
-      mouthOpenSince=null;
+    } else {
+      mouthOpenSince = null;
+      if (!inNeutral){
+        statusEl.textContent = `Vip: ${tiltDeg.toFixed(1)}°  (Neutral ±${dead}°)`;
+      }
     }
   }
 })();
