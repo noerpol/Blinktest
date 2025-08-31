@@ -2,317 +2,242 @@
 <html lang="da">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Hovedstyret ordtavle</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Hovedstyret ordtavle (mobil)</title>
 <style>
-  :root { --gap:12px; --btn:110px; }
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:16px}
-  h1{margin:0 0 8px}
-  .wrap{display:flex;gap:16px;flex-wrap:wrap}
-  .left{display:flex;flex-direction:column;gap:8px}
-  video,canvas{width:320px;height:240px;border-radius:10px;background:#000}
-  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--gap);max-width:360px}
-  .cell{height:var(--btn);display:flex;align-items:center;justify-content:center;
-        border-radius:12px;border:2px solid #ddd;background:#f7f7f7;font-weight:700;font-size:20px}
-  .cell.sel{outline:4px solid #4a90e2; background:#eaf2fe; border-color:#4a90e2}
-  .panel{min-width:280px;flex:1}
-  label{font-size:13px;opacity:.85}
+  :root{ --gap:10px; --maxw:420px; }
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:12px}
+  h1{font-size:20px;margin:0 0 6px}
+  p{margin:6px 0 10px}
+  /* Kameravisning – kompakt og sticky, så knapper altid kan ses */
+  .cam{
+    position: sticky; top: 6px; z-index: 1;
+    width: 100%; max-width: var(--maxw); margin: 0 auto 10px;
+    aspect-ratio: 4 / 3; border-radius: 12px; overflow: hidden; background:#000;
+  }
+  .cam video,.cam canvas{position:absolute; inset:0; width:100%; height:100%; object-fit:cover}
+  /* Grid med 3×3 knapper */
+  .grid{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:var(--gap);
+    width:100%; max-width:var(--maxw); margin:0 auto;
+  }
+  .cell{
+    min-height: clamp(72px, 18vw, 110px);
+    display:flex; align-items:center; justify-content:center;
+    border-radius:12px; border:2px solid #ddd; background:#f7f7f7;
+    font-weight:700; font-size: clamp(18px, 4.5vw, 22px); text-align:center; padding:6px;
+  }
+  .cell.sel{ outline:4px solid #4a90e2; background:#eaf2fe; border-color:#4a90e2 }
+  /* Kontroller – små, kompakte */
+  .panel{max-width:var(--maxw); margin:10px auto}
+  label{font-size:12px;opacity:.85}
   input[type=range]{width:100%}
   .pill{display:inline-block;background:#eef;padding:2px 8px;border-radius:999px;margin-left:6px}
-  #status{margin:6px 0 10px}
+  #status{margin:6px 0 8px}
   button{padding:10px 14px;border-radius:8px;border:1px solid #ccc;background:#fff}
-  .row{margin:10px 0}
-  .meters{display:flex;gap:8px;font:12px/1.2 system-ui}
+  .meters{display:flex;gap:8px;font:12px/1.2 system-ui;max-width:var(--maxw);margin:6px auto}
   .meter{background:#eee;border-radius:6px;overflow:hidden;flex:1;height:8px;position:relative}
-  .bar{position:absolute;left:50%;top:0;bottom:0;width:0;background:#4a90e2}
-  .barY{left:0}
+  .bar{position:absolute;left:50%;top:0;bottom:0;width:2px;background:#4a90e2}
+  .barW{left:0}
 </style>
 </head>
 <body>
 <h1>Hovedstyret ordtavle</h1>
-<p>Se mod kameraet. Bevæg <b>hovedet</b> venstre/højre for at skifte felt, op/ned for række.
-Åbn <b>munden</b> i ~3 sek. for at vælge. Tryk <b>Start</b> først.</p>
+<p>Se mod kameraet. Venstre/højre bevægelse skifter kolonne, op/ned skifter række. Åbn <b>munden</b> i ~3 sek. for at vælge. Tryk <b>Start</b> først.</p>
 
-<div class="wrap">
-  <div class="left">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas id="overlay" width="320" height="240"></canvas>
-    <div class="meters">
-      <div style="flex:1">Yaw
-        <div class="meter"><div id="yawBar" class="bar"></div></div>
-      </div>
-      <div style="flex:1">Pitch
-        <div class="meter"><div id="pitchBar" class="bar barY"></div></div>
-      </div>
-      <div style="flex:1">Mund
-        <div class="meter"><div id="mouthBar" class="bar barY"></div></div>
-      </div>
-    </div>
+<div class="cam">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="overlay"></canvas>
+</div>
+
+<div class="meters">
+  <div style="flex:1">Yaw<div class="meter"><div id="yawBar" class="bar"></div></div></div>
+  <div style="flex:1">Pitch<div class="meter"><div id="pitchBar" class="bar barW"></div></div></div>
+  <div style="flex:1">Mund<div class="meter"><div id="mouthBar" class="bar barW"></div></div></div>
+</div>
+
+<div class="panel">
+  <button id="startBtn">Start (kamera + lyd)</button>
+  <div id="status">Status: klar</div>
+</div>
+
+<div class="grid" id="grid">
+  <div class="cell">Ja</div>
+  <div class="cell">Nej</div>
+  <div class="cell">Sulten</div>
+  <div class="cell">Toilet</div>
+  <div class="cell">Far</div>
+  <div class="cell">Mor</div>
+  <div class="cell">Træt</div>
+  <div class="cell">Tak</div>
+  <div class="cell">Hjælp</div>
+</div>
+
+<div class="panel">
+  <div>
+    <label>Yaw-tærskel <span class="pill" id="yawVal">0.060</span></label>
+    <input id="yawThr" type="range" min="0.02" max="0.12" step="0.002" value="0.060">
   </div>
-
-  <div class="panel">
-    <button id="startBtn">Start (kamera + lyd)</button>
-    <div id="status">Status: klar</div>
-
-    <div class="grid" id="grid">
-      <div class="cell">Ja</div>
-      <div class="cell">Nej</div>
-      <div class="cell">Sulten</div>
-      <div class="cell">Toilet</div>
-      <div class="cell">Far</div>
-      <div class="cell">Mor</div>
-      <div class="cell">Træt</div>
-      <div class="cell">Tak</div>
-      <div class="cell">Hjælp</div>
-    </div>
-
-    <div class="row">
-      <label>Yaw-tærskel (vandret) <span class="pill" id="yawVal">0.060</span></label>
-      <input id="yawThr" type="range" min="0.02" max="0.12" step="0.002" value="0.060">
-    </div>
-    <div class="row">
-      <label>Pitch-tærskel (lodret) <span class="pill" id="pitchVal">0.055</span></label>
-      <input id="pitchThr" type="range" min="0.02" max="0.12" step="0.002" value="0.055">
-    </div>
-    <div class="row">
-      <label>Mund-åben (forhold) <span class="pill" id="mouthVal">0.32</span></label>
-      <input id="mouthThr" type="range" min="0.15" max="0.60" step="0.01" value="0.32">
-    </div>
-    <div class="row">
-      <label>Holdetid for valg (sek.) <span class="pill" id="holdVal">3.0</span></label>
-      <input id="holdSec" type="range" min="1" max="5" step="0.5" value="3">
-    </div>
-    <div class="row">
-      <label>Gentagelses-spærre (ms) <span class="pill" id="coolVal">500</span></label>
-      <input id="cooldown" type="range" min="200" max="1200" step="50" value="500">
-    </div>
-    <div class="row">
-      <label>Lydstyrke (bip/feedback) <span class="pill" id="volVal">8%</span></label>
-      <input id="volume" type="range" min="0" max="100" step="1" value="8">
-    </div>
+  <div>
+    <label>Pitch-tærskel <span class="pill" id="pitchVal">0.055</span></label>
+    <input id="pitchThr" type="range" min="0.02" max="0.12" step="0.002" value="0.055">
+  </div>
+  <div>
+    <label>Mund-åben (forhold) <span class="pill" id="mouthVal">0.32</span></label>
+    <input id="mouthThr" type="range" min="0.15" max="0.60" step="0.01" value="0.32">
+  </div>
+  <div>
+    <label>Holdetid (sek.) <span class="pill" id="holdVal">3.0</span></label>
+    <input id="holdSec" type="range" min="1" max="5" step="0.5" value="3">
   </div>
 </div>
 
-<!-- MediaPipe FaceMesh -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
+<!-- RIGTIGE MediaPipe UMD-filer -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 
 <script>
 (() => {
-  // UI refs
   const video = document.getElementById('video');
   const overlay = document.getElementById('overlay');
   const ctx = overlay.getContext('2d');
   const startBtn = document.getElementById('startBtn');
   const statusEl = document.getElementById('status');
-  const gridEl = document.getElementById('grid');
-  const yawThrEl = document.getElementById('yawThr');
-  const pitchThrEl = document.getElementById('pitchThr');
-  const mouthThrEl = document.getElementById('mouthThr');
-  const holdSecEl = document.getElementById('holdSec');
-  const cooldownEl = document.getElementById('cooldown');
-  const volumeEl = document.getElementById('volume');
-  const yawVal = document.getElementById('yawVal');
-  const pitchVal = document.getElementById('pitchVal');
-  const mouthVal = document.getElementById('mouthVal');
-  const holdVal = document.getElementById('holdVal');
-  const coolVal = document.getElementById('coolVal');
-  const volVal = document.getElementById('volVal');
   const yawBar = document.getElementById('yawBar');
   const pitchBar = document.getElementById('pitchBar');
   const mouthBar = document.getElementById('mouthBar');
 
-  // UI display
-  const fmt = (n,d=3)=> (+n).toFixed(d);
-  const upd = () => {
-    yawVal.textContent = fmt(yawThrEl.value);
-    pitchVal.textContent = fmt(pitchThrEl.value);
-    mouthVal.textContent = fmt(mouthThrEl.value,2);
-    holdVal.textContent = (+holdSecEl.value).toFixed(1);
-    coolVal.textContent = cooldownEl.value;
-    volVal.textContent = volumeEl.value + '%';
-  };
-  [yawThrEl,pitchThrEl,mouthThrEl,holdSecEl,cooldownEl,volumeEl].forEach(el=> el.oninput = upd);
-  upd();
+  const yawThrEl = document.getElementById('yawThr');
+  const pitchThrEl = document.getElementById('pitchThr');
+  const mouthThrEl = document.getElementById('mouthThr');
+  const holdSecEl = document.getElementById('holdSec');
+  const yawVal = document.getElementById('yawVal');
+  const pitchVal = document.getElementById('pitchVal');
+  const mouthVal = document.getElementById('mouthVal');
+  const holdVal = document.getElementById('holdVal');
 
-  // Speech + beep
+  const gridEl = document.getElementById('grid');
+  const cells = [...gridEl.querySelectorAll('.cell')];
+  let r=0,c=0; function focus(){ cells.forEach(x=>x.classList.remove('sel')); cells[r*3+c].classList.add('sel'); } focus();
+
+  const fmt = (n,d=3)=> (+n).toFixed(d);
+  function updUI(){ yawVal.textContent=fmt(yawThrEl.value); pitchVal.textContent=fmt(pitchThrEl.value); mouthVal.textContent=fmt(mouthThrEl.value,2); holdVal.textContent=(+holdSecEl.value).toFixed(1); }
+  [yawThrEl,pitchThrEl,mouthThrEl,holdSecEl].forEach(el=> el.oninput = updUI); updUI();
+
+  // Sticky canvas size
+  function sizeCanvas(){
+    const rect = video.getBoundingClientRect();
+    overlay.width = rect.width * devicePixelRatio;
+    overlay.height = rect.height * devicePixelRatio;
+  }
+  window.addEventListener('resize', sizeCanvas);
+
+  // Audio feedback + tale
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   let audioCtx = null;
-  function beep(freq=880, ms=120){
+  function beep(freq=880,ms=120){
     if(!audioCtx) return;
-    const gain = audioCtx.createGain();
-    const osc = audioCtx.createOscillator();
-    gain.gain.value = Math.max(0, Math.min(0.4, volumeEl.value/250));
-    osc.frequency.value = freq;
-    osc.connect(gain).connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + ms/1000);
+    const g=audioCtx.createGain(), o=audioCtx.createOscillator();
+    g.gain.value = 0.12; o.frequency.value=freq;
+    o.connect(g).connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+ms/1000);
   }
-  function speak(text) {
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'da-DK';
-    speechSynthesis.cancel();
-    speechSynthesis.speak(u);
-  }
+  function speak(text){ const u=new SpeechSynthesisUtterance(text); u.lang='da-DK'; speechSynthesis.cancel(); speechSynthesis.speak(u); }
 
-  // Grid state
-  const cells = [...gridEl.querySelectorAll('.cell')];
-  let r = 0, c = 0; // 0..2
-  function focusCell(){
-    cells.forEach(x=> x.classList.remove('sel'));
-    const idx = r*3 + c;
-    cells[idx].classList.add('sel');
-  }
-  focusCell();
+  // Helpers
+  const IDX={ nose:4, leftEyeOuter:33, rightEyeOuter:263, mouthLeft:61, mouthRight:291, mouthUp:13, mouthDown:14 };
+  const dist=(a,b)=> Math.hypot(a.x-b.x, a.y-b.y);
 
-  let lastMove = 0;
-  function tryMove(dr, dc){
+  let lastMove=0;
+  function tryMove(dr,dc){
     const now = performance.now();
-    if (now - lastMove < +cooldownEl.value) return;
-    const nr = Math.max(0, Math.min(2, r + dr));
-    const nc = Math.max(0, Math.min(2, c + dc));
-    if (nr !== r || nc !== c){
-      r = nr; c = nc;
-      focusCell();
-      beep(660,90);
-      lastMove = now;
-    }
+    if (now - lastMove < 350) return;
+    const nr=Math.max(0,Math.min(2,r+dr)), nc=Math.max(0,Math.min(2,c+dc));
+    if(nr!==r || nc!==c){ r=nr; c=nc; focus(); beep(660,90); lastMove=now; }
   }
 
-  // Landmark helpers
-  const IDX = {
-    nose: 4, // næsetip
-    leftEyeOuter: 33, rightEyeOuter: 263,
-    mouthLeft: 61, mouthRight: 291,
-    mouthUp: 13, mouthDown: 14
-  };
-  function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
+  let mouthOpenSince=null;
 
-  // Mouth hold timer
-  let mouthOpenSince = null;
-
-  // Bars
-  function setYawBar(v){ // v ~ -0.15..+0.15
-    const clamped = Math.max(-0.15, Math.min(0.15, v));
-    const px = (clamped/0.30 + 0.5) * 100; // map til 0..100
-    yawBar.style.left = px + '%';
-    yawBar.style.width = '2px';
-  }
-  function setPitchBar(v){ // 0..0.15
-    const px = Math.max(0, Math.min(100, (v/0.15)*100));
-    pitchBar.style.width = px + '%';
-  }
-  function setMouthBar(v){
-    const px = Math.max(0, Math.min(100, (v/0.6)*100));
-    mouthBar.style.width = px + '%';
-  }
-
-  // Draw landmarks (eyes + mouth)
-  function drawOverlay(lm){
-    ctx.clearRect(0,0,overlay.width,overlay.height);
-    ctx.save();
-    ctx.scale(overlay.width, overlay.height); // landmarks i [0..1]
-    const pts = [IDX.leftEyeOuter, IDX.rightEyeOuter, IDX.mouthLeft, IDX.mouthRight, IDX.mouthUp, IDX.mouthDown, IDX.nose];
-    ctx.fillStyle='rgba(255,255,255,0.9)';
-    pts.forEach(i=>{
-      const p=lm[i]; ctx.beginPath(); ctx.arc(p.x,p.y,0.01,0,Math.PI*2); ctx.fill();
-    });
-    ctx.restore();
-  }
+  function setYawBar(v){ const cl=Math.max(-0.15,Math.min(0.15,v)); const px=(cl/0.30+0.5)*100; yawBar.style.left=px+'%'; }
+  function setPitchBar(v){ pitchBar.style.width=Math.max(0,Math.min(100,(Math.abs(v)/0.15)*100))+'%'; }
+  function setMouthBar(v){ mouthBar.style.width=Math.max(0,Math.min(100,(v/0.6)*100))+'%'; }
 
   // MediaPipe
-  let faceMesh=null, camera=null;
+  let fm=null, cam=null;
 
   async function start(){
     try{
-      if(!audioCtx){ audioCtx = new AudioCtx(); await audioCtx.resume(); }
-      // camera
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video:{facingMode:'user', width:{ideal:640}, height:{ideal:480}}, audio:false
-      });
-      video.srcObject = stream; await video.play();
+      if(!audioCtx){ audioCtx=new AudioCtx(); await audioCtx.resume(); }
 
-      faceMesh = new FaceMesh.FaceMesh({
-        locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`
-      });
-      faceMesh.setOptions({
-        maxNumFaces:1, refineLandmarks:true, selfieMode:true,
-        minDetectionConfidence:0.5, minTrackingConfidence:0.5
-      });
-      faceMesh.onResults(onResults);
+      const stream = await navigator.mediaDevices.getUserMedia({ video:{facingMode:'user', width:{ideal:640}, height:{ideal:480}}, audio:false });
+      video.srcObject=stream; await video.play(); sizeCanvas();
 
-      camera = new Camera.Camera(video, {
-        onFrame: async () => { await faceMesh.send({image: video}); },
-        width: 320, height: 240
+      fm = new FaceMesh({
+        locateFile: (f)=> `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`
       });
-      camera.start();
-      statusEl.textContent = 'Status: kører – bevæg hovedet for at flytte fokus. Åbn munden for at vælge.';
+      fm.setOptions({ maxNumFaces:1, refineLandmarks:true, selfieMode:true, minDetectionConfidence:0.5, minTrackingConfidence:0.5 });
+      fm.onResults(onResults);
+
+      cam = new Camera(video, { onFrame: async()=>{ await fm.send({image:video}); }, width: 320, height: 240 });
+      cam.start();
+
+      statusEl.textContent='Status: kører – bevæg hovedet for at flytte fokus. Åbn munden for at vælge.';
     }catch(e){
       console.error(e);
-      statusEl.textContent = 'Fejl: ' + (e?.message || e);
+      statusEl.textContent='Fejl: '+(e?.message||e);
     }
   }
   startBtn.addEventListener('click', start);
 
-  // Core estimation + control
+  function drawPoints(lm){
+    const w=overlay.width, h=overlay.height;
+    ctx.clearRect(0,0,w,h);
+    ctx.save(); ctx.scale(w,h);
+    const pts=[IDX.leftEyeOuter,IDX.rightEyeOuter,IDX.mouthLeft,IDX.mouthRight,IDX.mouthUp,IDX.mouthDown,IDX.nose];
+    ctx.fillStyle='rgba(255,255,255,.9)';
+    for(const i of pts){ const p=lm[i]; ctx.beginPath(); ctx.arc(p.x,p.y,0.012,0,Math.PI*2); ctx.fill(); }
+    ctx.restore();
+  }
+
   function onResults(res){
     if(!res.multiFaceLandmarks || !res.multiFaceLandmarks.length){
-      statusEl.textContent = 'Status: Finder ikke ansigt – prøv bedre lys/tættere på.';
-      return;
+      statusEl.textContent='Status: Finder ikke ansigt – prøv bedre lys/tættere på.'; return;
     }
     const lm = res.multiFaceLandmarks[0];
-    drawOverlay(lm);
+    drawPoints(lm);
 
-    // Øjne-center og skalering
-    const L = lm[IDX.leftEyeOuter], R = lm[IDX.rightEyeOuter];
-    const eyeMid = { x:(L.x+R.x)/2, y:(L.y+R.y)/2 };
-    const eyeDist = dist(L,R) + 1e-6;
+    const L=lm[IDX.leftEyeOuter], R=lm[IDX.rightEyeOuter];
+    const mid={x:(L.x+R.x)/2, y:(L.y+R.y)/2}, eyeDist=dist(L,R)+1e-6;
+    const N=lm[IDX.nose];
+    const yaw=(N.x-mid.x)/eyeDist;       // venstre<0, højre>0
+    const pitch=(N.y-mid.y)/eyeDist;     // ned>0, op<0
+    setYawBar(yaw); setPitchBar(pitch);
 
-    // Yaw/pitch som relative forskydninger af næsetip mod øjen-center
-    const N = lm[IDX.nose];
-    const yaw = (N.x - eyeMid.x) / eyeDist;      // venstre < 0, højre > 0
-    const pitch = (N.y - eyeMid.y) / eyeDist;    // ned > 0, op < 0
+    const yawThr=+yawThrEl.value, pitchThr=+pitchThrEl.value;
+    if(yaw> yawThr) tryMove(0,+1);
+    if(yaw<-yawThr) tryMove(0,-1);
+    if(pitch> pitchThr) tryMove(+1,0);
+    if(pitch<-pitchThr) tryMove(-1,0);
 
-    setYawBar(yaw);
-    setPitchBar(Math.abs(pitch));
+    // Mund-åben ratio
+    const ML=lm[IDX.mouthLeft], MR=lm[IDX.mouthRight], MU=lm[IDX.mouthUp], MD=lm[IDX.mouthDown];
+    const ratio = dist(MU,MD) / (dist(ML,MR)+1e-6);
+    setMouthBar(ratio);
 
-    const yawThr = +yawThrEl.value;
-    const pitchThr = +pitchThrEl.value;
-
-    // Navigation m. deadzone og cooldown
-    if (yaw >  yawThr) tryMove(0,+1);
-    if (yaw < -yawThr) tryMove(0,-1);
-    if (pitch >  pitchThr) tryMove(+1,0);
-    if (pitch < -pitchThr) tryMove(-1,0);
-
-    // Mund-åben: (lip gap) / (mundbredde)
-    const ML = lm[IDX.mouthLeft], MR = lm[IDX.mouthRight];
-    const MU = lm[IDX.mouthUp],   MD = lm[IDX.mouthDown];
-    const mouthW = dist(ML,MR) + 1e-6;
-    const mouthGap = dist(MU,MD);
-    const mouthRatio = mouthGap / mouthW;
-    setMouthBar(mouthRatio);
-
-    const thr = +mouthThrEl.value;
-    const needMs = (+holdSecEl.value) * 1000;
-
-    if (mouthRatio > thr){
-      if (!mouthOpenSince) mouthOpenSince = performance.now();
-      const held = performance.now() - mouthOpenSince;
-      statusEl.textContent = `Åben mund: ${(held/1000).toFixed(1)}s / ${(needMs/1000).toFixed(1)}s`;
-      if (held >= needMs){
-        mouthOpenSince = null; // reset
-        // Vælg nuværende
-        const text = cells[r*3+c].textContent.trim();
-        beep(880,140);
-        speak(text);
-        statusEl.textContent = `Valgt: ${text}`;
-        // lille lås for at undgå dobbelvalg med det samme
-        lastMove = performance.now();
+    const thr=+mouthThrEl.value, needMs=(+holdSecEl.value)*1000;
+    if(ratio>thr){
+      if(!mouthOpenSince) mouthOpenSince=performance.now();
+      const held=performance.now()-mouthOpenSince;
+      statusEl.textContent=`Åben mund: ${(held/1000).toFixed(1)}s / ${(+holdSecEl.value).toFixed(1)}s`;
+      if(held>=needMs){
+        mouthOpenSince=null;
+        const text=cells[r*3+c].textContent.trim();
+        beep(880,140); speak(text);
+        statusEl.textContent=`Valgt: ${text}`;
+        lastMove=performance.now(); // lille cooldown
       }
-    } else {
-      mouthOpenSince = null;
+    }else{
+      mouthOpenSince=null;
     }
   }
 })();
