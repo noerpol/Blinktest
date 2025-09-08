@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="utf-8" />
+    <title>AI-værktøj: Egnethedstest • Rejsen • Arbejdskort</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <style>
+      :root {
+        --bg:#0f172a; --panel:#111827; --muted:#1f2937; --text:#e5e7eb;
+        --accent:#60a5fa; --ok:#34d399; --warn:#fbbf24; --bad:#f87171;
+        --human:#93c5fd; --agent:#86efac; --hybrid:#c4b5fd; --hitl:#f472b6;
+      }
+      *{box-sizing:border-box}
+      body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial}
+      header{padding:16px 20px;border-bottom:1px solid #1f2937;display:flex;align-items:center;gap:12px}
+      header h1{font-size:18px;margin:0;font-weight:600}
+      header .subtitle{opacity:.8;font-size:13px}
+      .app{display:grid;grid-template-columns:320px 1fr;min-height:100vh}
+      aside{border-right:1px solid #1f2937;background:var(--panel);padding:14px;display:flex;flex-direction:column;gap:12px}
+      .tabbtn{width:100%;padding:10px 12px;background:#0b1220;border:1px solid #1f2937;border-radius:8px;color:var(--text);cursor:pointer;text-align:left}
+      .tabbtn.active{border-color:var(--accent);outline:2px solid #1e40af}
+      .card{background:#0b1220;border:1px solid #1f2937;border-radius:12px;padding:14px}
+      .row{display:flex;gap:10px;flex-wrap:wrap}
+      .row > *{flex:1}
+      label{font-size:13px;opacity:.9}
+      .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;border:1px solid #233044;background:#0b1220}
+      .legend{display:flex;gap:8px;flex-wrap:wrap}
+      .dot{width:10px;height:10px;border-radius:50%}
+      .controls{display:flex;gap:8px;flex-wrap:wrap}
+      button, select, input[type="text"]{
+        background:#0b1220;border:1px solid #1f2937;color:var(--text);border-radius:8px;padding:8px 10px
+      }
+      button:hover{border-color:#374151}
+      canvas{background:#060a17;border:1px solid #1f2937;border-radius:12px}
+      .small{font-size:12px;opacity:.85}
+      .grid{display:grid;gap:10px}
+      .grid.cols2{grid-template-columns:1fr 1fr}
+      a{color:var(--accent)}
+      .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;background:#0b1220;border:1px solid #1f2937;padding:2px 6px;border-radius:6px}
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>AI-værktøj</h1>
+      <div class="subtitle">AI-egnethedstesten • AI-rejsen • AI-arbejdskortet</div>
+    </header>
+    <div id="root" class="app"></div>
+
+    <!-- React + Babel (for enkel, én-fil prototyping) -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+
+    <script type="text/babel">
+      const {useState,useRef,useEffect,useMemo} = React;
+
+      // ---------- Utils ----------
+      const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+      const uid=()=>Math.random().toString(36).slice(2,9);
+
+      // ---------- Tabs ----------
+      const TABS = [
+        {id:'test', label:'AI-egnethedstesten'},
+        {id:'journey', label:'AI-rejsen'},
+        {id:'board', label:'AI-arbejdskortet'}
+      ];
+
+      // ---------- Sidebar ----------
+      function Sidebar({tab,setTab,exportJSON,importJSON}) {
+        return (
+          <aside>
+            <div className="card">
+              <div className="grid">
+                {TABS.map(t=>(
+                  <button key={t.id}
+                    className={"tabbtn "+(tab===t.id?'active':'')}
+                    onClick={()=>setTab(t.id)}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="card">
+              <div style={{fontWeight:600,marginBottom:8}}>Rolle-farver</div>
+              <div className="legend">
+                <span className="pill"><span className="dot" style={{background:'var(--human)'}}></span>Human</span>
+                <span className="pill"><span className="dot" style={{background:'var(--agent)'}}></span>Agent</span>
+                <span className="pill"><span className="dot" style={{background:'var(--hybrid)'}}></span>Hybrid</span>
+                <span className="pill"><span className="dot" style={{background:'var(--hitl)'}}></span>HITL</span>
+              </div>
+            </div>
+            <div className="card">
+              <div style={{fontWeight:600,marginBottom:8}}>Arbejdskort • import/eksport</div>
+              <div className="controls">
+                <button onClick={exportJSON}>Eksportér JSON</button>
+                <button onClick={importJSON}>Importér JSON</button>
+              </div>
+              <div className="small" style={{marginTop:8}}>
+                Tip: Brug <span className="kbd">Eksportér PNG</span> i “Arbejdskortet” for slide-klar billede.
+              </div>
+            </div>
+            <div className="card small">
+              <div style={{fontWeight:600,marginBottom:6}}>Genveje</div>
+              <div>Træk/ slip noder • Dobbeltklik for at redigere titel</div>
+              <div><span className="kbd">Del</span> sletter valgt node • <span className="kbd">Ctrl/Cmd + S</span> gemmer PNG</div>
+            </div>
+          </aside>
+        );
+      }
+
+      // ---------- AI-egnethedstesten ----------
+      function FitnessTest() {
+        const [q,setQ]=useState({
+          repeat:'', rules:'', digital:'', risk:'', success:''
+        });
+        const score = useMemo(()=>{
+          let s=0;
+          if(q.repeat==='yes') s++;
+          if(q.rules==='yes') s++;
+          if(q.digital==='yes') s++;
+          if(q.risk==='low') s++;
+          if(q.success==='yes') s++;
+          return s;
+        },[q]);
+        const verdict = useMemo(()=>{
+          if(score>=4) return {label:'Stærk kandidat', color:'var(--ok)'};
+          if(score===3) return {label:'Mellem – kræver HITL', color:'var(--warn)'};
+          return {label:'Vent / afklar mere', color:'var(--bad)'};
+        },[score]);
+
+        const Radio = ({name,options}) => (
+          <div className="card">
+            <div className="row">
+              {options.map(o=>(
+                <label key={o.value} className="pill" style={{cursor:'pointer'}}>
+                  <input
+                    type="radio"
+                    name={name}
+                    value={o.value}
+                    checked={q[name]===o.value}
+                    onChange={e=>setQ(p=>({...p,[name]:e.target.value}))}
+                  />
+                  <span>{o.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+
+        return (
+          <main style={{padding:16,display:'grid',gap:12}}>
+            <div className="card">
+              <h2 style={{margin:'0 0 8px'}}>AI-egnethedstesten</h2>
+              <div className="small">5 hurtige spørgsmål for at vurdere om en opgave er egnet til AI.</div>
+            </div>
+
+            <div className="card">
+              <div style={{marginBottom:6,fontWeight:600}}>1) Er opgaven tilbagevendende?</div>
+              <Radio name="repeat" options={[{label:'Ja',value:'yes'},{label:'Nej',value:'no'}]} />
+              <div style={{marginBottom:6,fontWeight:600}}>2) Er den regelstyret/skabelonbaseret?</div>
+              <Radio name="rules" options={[{label:'Ja',value:'yes'},{label:'Nej',value:'no'}]} />
+              <div style={{marginBottom:6,fontWeight:600}}>3) Findes input/data digitalt?</div>
+              <Radio name="digital" options={[{label:'Ja',value:'yes'},{label:'Nej',value:'no'}]} />
+              <div style={{marginBottom:6,fontWeight:600}}>4) Konsekvens ved fejl?</div>
+              <Radio name="risk" options={[{label:'Lav/Moderat',value:'low'},{label:'Høj',value:'high'}]} />
+              <div style={{marginBottom:6,fontWeight:600}}>5) Kan succes måles klart?</div>
+              <Radio name="success" options={[{label:'Ja',value:'yes'},{label:'Nej',value:'no'}]} />
+            </div>
+
+            <div className="card row">
+              <div className="pill">Score: {score}/5</div>
+              <div className="pill" style={{borderColor:verdict.color,color:verdict.color}}>
+                {verdict.label}
+              </div>
+              <div className="small">Anbefaling: {score>=4 ? 'Start en pilot nu'
+                : score===3 ? 'Mulig – planlæg Human-in-the-Loop'
+                : 'Afklar data/regler/succesmål før I går videre'}</div>
+            </div>
+          </main>
+        );
+      }
+
+      // ---------- AI-rejsen ----------
+      const JOURNEY = [
+        {t:'Identificér opgave', s:'Vælg én afgrænset, gentagende opgave.'},
+        {t:'Tegn arbejdsflow', s:'Trigger → Trin → Outcome. Mærk Human/Agent/Hybrid.'},
+        {t:'Definér succesmål', s:'1-2 kvantificerbare KPI’er.'},
+        {t:'Regler & guardrails', s:'Kvalitet, budget, data, “må ikke”.'},
+        {t:'Human in the Loop', s:'Bestem review-checkpoints.'},
+        {t:'Pilot (2–4 uger)', s:'Kør småt, lær hurtigt.'},
+        {t:'Skalér & gentag', s:'Spred læring, mål, AI-steward.'},
+      ];
+      function Journey() {
+        const [done,setDone]=useState(Array(JOURNEY.length).fill(false));
+        const toggle=(i)=>setDone(d=>d.map((v,idx)=>idx===i?!v:v));
+        return (
+          <main style={{padding:16,display:'grid',gap:12}}>
+            <div className="card">
+              <h2 style={{margin:'0 0 8px'}}>AI-rejsen (7 trin)</h2>
+              <div className="small">Roadmap fra idé til skalering. Markér trin som gennemført.</div>
+            </div>
+            <div className="card">
+              <div className="row" style={{alignItems:'stretch'}}>
+                {JOURNEY.map((j,i)=>(
+                  <div key={i} className="card" style={{flex:'1 1 220px',borderColor:done[i]?'var(--ok)':'#1f2937'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+                      <div style={{fontWeight:600}}>{i+1}) {j.t}</div>
+                      <button onClick={()=>toggle(i)} style={{borderColor:done[i]?'var(--ok)':'#1f2937'}}>
+                        {done[i]?'✓ Done':'Markér'}
+                      </button>
+                    </div>
+                    <div className="small" style={{marginTop:6,opacity:.9}}>{j.s}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </main>
+        );
+      }
+
+      // ---------- Canvas Arbejdskort ----------
+      const ROLE_COLORS = { Human:'var(--human)', Agent:'var(--agent)', Hybrid:'var(--hybrid)' };
+
+      function defaultNodes(){
+        const x0=60, y=120, gap=220, w=180, h=56;
+        return [
+          {id:uid(), x:x0,       y, w, h, title:'Trigger', role:'Human', hitl:false},
+          {id:uid(), x:x0+gap,   y, w, h, title:'Trin 1',  role:'Agent', hitl:false},
+          {id:uid(), x:x0+gap*2, y, w, h, title:'Trin 2',  role:'Hybrid',hitl:true},
+          {id:uid(), x:x0+gap*3, y, w, h, title:'Outcome', role:'Agent', hitl:false},
+        ];
+      }
+
+      function Board() {
+        const [nodes,setNodes]=useState(defaultNodes);
+        const [selected,setSelected]=useState(null);
+        const [titleEditing,setTitleEditing]=useState(null);
+        const canvasRef=useRef(null);
+        const drag=useRef({id:null,dx:0,dy:0});
+
+        // Draw
+        useEffect(()=>{
+          const canvas=canvasRef.current;
+          const ctx=canvas.getContext('2d');
+          const DPR = window.devicePixelRatio || 1;
+          const W = canvas.clientWidth, H = canvas.clientHeight;
+          canvas.width = W*DPR; canvas.height=H*DPR; ctx.scale(DPR,DPR);
+
+          // background grid
+          ctx.fillStyle = '#060a17'; ctx.fillRect(0,0,W,H);
+          ctx.strokeStyle='#0f1a33'; ctx.lineWidth=1;
+          for(let x=0;x<W;x+=20){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+          for(let y=0;y<H;y+=20){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+          // edges (left->right order)
+          ctx.lineWidth=2; ctx.strokeStyle='#334155';
+          for(let i=0;i<nodes.length-1;i++){
+            const a=nodes[i], b=nodes[i+1];
+            const ax=a.x+a.w, ay=a.y+a.h/2, bx=b.x, by=b.y+b.h/2;
+            ctx.beginPath();
+            const mx = (ax+bx)/2;
+            ctx.moveTo(ax,ay); ctx.bezierCurveTo(mx,ay,mx,by,bx,by);
+            ctx.stroke();
+            // arrow
+            const angle = Math.atan2(by-ay, bx-ax);
+            const ar=8;
+            ctx.beginPath();
+            ctx.moveTo(bx,by);
+            ctx.lineTo(bx - ar*Math.cos(angle - Math.PI/6), by - ar*Math.sin(angle - Math.PI/6));
+            ctx.lineTo(bx - ar*Math.cos(angle + Math.PI/6), by - ar*Math.sin(angle + Math.PI/6));
+            ctx.closePath();
+            ctx.fillStyle='#334155'; ctx.fill();
+          }
+
+          // nodes
+          nodes.forEach(n=>{
+            // shadow
+            ctx.fillStyle='rgba(0,0,0,.35)';
+            ctx.fillRect(n.x+2,n.y+4,n.w,n.h);
+            // card
+            ctx.fillStyle='#0b1220';
+            ctx.strokeStyle = selected===n.id ? 'var(--accent)' : '#1f2937';
+            ctx.lineWidth = selected===n.id ? 2 : 1.5;
+            roundRect(ctx,n.x,n.y,n.w,n.h,10,true,true);
+
+            // role stripe
+            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue(ROLE_COLORS[n.role].slice(4,-1)) || ROLE_COLORS[n.role];
+            ctx.fillStyle = ROLE_COLORS[n.role];
+            roundRect(ctx,n.x,n.y,8,n.h,10,true,false);
+
+            // title
+            ctx.fillStyle='#e5e7eb';
+            ctx.font='600 14px Inter, system-ui, sans-serif';
+            ctx.fillText(n.title, n.x+16, n.y+24);
+
+            // role badge
+            ctx.font='12px Inter, system-ui, sans-serif';
+            const badge = n.role;
+            const tw = ctx.measureText(badge).width+12;
+            ctx.fillStyle='#0b1220'; ctx.strokeStyle='#233044'; ctx.lineWidth=1;
+            roundRect(ctx,n.x+n.w-tw-10,n.y+n.h-26,tw,20,8,true,true);
+            ctx.fillStyle=ROLE_COLORS[n.role];
+            ctx.fillText(badge, n.x+n.w-tw-10+6, n.y+n.h-12);
+
+            // HITL badge
+            if(n.hitl){
+              const b='HITL';
+              const w=ctx.measureText(b).width+12;
+              ctx.strokeStyle='#5b1645'; ctx.fillStyle='#1a0b16';
+              roundRect(ctx,n.x+12,n.y+n.h-26,w,20,8,true,true);
+              ctx.fillStyle='var(--hitl)'; ctx.fillText(b, n.x+18, n.y+n.h-12);
+            }
+          });
+
+          function roundRect(ctx,x,y,w,h,r,fill,stroke){
+            ctx.beginPath();
+            ctx.moveTo(x+r,y);
+            ctx.arcTo(x+w,y,x+w,y+h,r);
+            ctx.arcTo(x+w,y+h,x,y+h,r);
+            ctx.arcTo(x,y+h,x,y,r);
+            ctx.arcTo(x,y,x+w,y,r);
+            if(fill) ctx.fill();
+            if(stroke) ctx.stroke();
+          }
+        },[nodes,selected]);
+
+        // Hit test
+        const hit=(x,y)=>{
+          for(let i=nodes.length-1;i>=0;i--){
+            const n=nodes[i];
+            if(x>=n.x && x<=n.x+n.w && y>=n.y && y<=n.y+n.h) return n;
+          }
+          return null;
+        };
+
+        // Events
+        const onDown = (e)=>{
+          const rect=canvasRef.current.getBoundingClientRect();
+          const x=e.clientX-rect.left, y=e.clientY-rect.top;
+          const n=hit(x,y);
+          setSelected(n? n.id : null);
+          if(n){
+            drag.current.id=n.id;
+            drag.current.dx=x-n.x; drag.current.dy=y-n.y;
+          }
+        };
+        const onMove = (e)=>{
+          if(!drag.current.id) return;
+          const rect=canvasRef.current.getBoundingClientRect();
+          const x=e.clientX-rect.left, y=e.clientY-rect.top;
+          setNodes(ns=>ns.map(n=> n.id===drag.current.id ?
+            {...n, x:clamp(x-drag.current.dx,16,rect.width-n.w-16),
+                    y:clamp(y-drag.current.dy,16,rect.height-n.h-16)} : n));
+        };
+        const onUp = ()=>{ drag.current.id=null; };
+
+        // Keyboard: delete to remove
+        useEffect(()=>{
+          const onKey=(e)=>{
+            if(e.key==='Delete' && selected){
+              setNodes(ns=>ns.filter(n=>n.id!==selected));
+              setSelected(null);
+            }
+            // Ctrl/Cmd+S to export PNG
+            if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='s'){
+              e.preventDefault(); exportPNG();
+            }
+          };
+          window.addEventListener('keydown',onKey);
+          return ()=>window.removeEventListener('keydown',onKey);
+        },[selected]);
+
+        // Edit title on dblclick
+        const onDbl = (e)=>{
+          const rect=canvasRef.current.getBoundingClientRect();
+          const x=e.clientX-rect.left, y=e.clientY-rect.top;
+          const n=hit(x,y);
+          if(n){ setTitleEditing({id:n.id, value:n.title}); }
+        };
+
+        const updateSelected = (patch)=> setNodes(ns=>ns.map(n=> n.id===selected ? {...n,...patch}:n));
+
+        const addNode = ()=>{
+          const last = nodes[nodes.length-1];
+          setNodes(ns=>[...ns, {id:uid(), x:last? last.x+220:60, y:last? last.y:100, w:180,h:56, title:'Nyt trin', role:'Agent', hitl:false}]);
+        };
+        const insertBefore = ()=>{
+          if(!selected) return;
+          const idx = nodes.findIndex(n=>n.id===selected);
+          const ref = nodes[idx];
+          const newNode = {id:uid(), x:ref.x-200, y:ref.y, w:180,h:56, title:'Indsat trin', role:'Hybrid', hitl:false};
+          setNodes(ns=>{
+            const copy=[...ns]; copy.splice(idx,0,newNode); return copy;
+          });
+        };
+
+        const exportPNG = ()=>{
+          const link=document.createElement('a');
+          link.download = 'arbejdskort.png';
+          link.href = canvasRef.current.toDataURL('image/png');
+          link.click();
+        };
+
+        const exportJSON = ()=>{
+          const data = JSON.stringify({nodes},null,2);
+          const blob = new Blob([data],{type:'application/json'});
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href=url; a.download='arbejdskort.json'; a.click();
+          URL.revokeObjectURL(url);
+        };
+
+        // Expose import/export to sidebar buttons
+        useEffect(()=>{
+          window.__exportBoardJSON = exportJSON;
+          window.__importBoardJSON = ()=>{
+            const inp=document.createElement('input');
+            inp.type='file'; inp.accept='application/json';
+            inp.onchange = ()=>{
+              const file=inp.files[0]; if(!file) return;
+              file.text().then(txt=>{
+                try{
+                  const obj=JSON.parse(txt);
+                  if(Array.isArray(obj.nodes)) setNodes(obj.nodes);
+                }catch(e){ alert('Ugyldig JSON'); }
+              })
+            };
+            inp.click();
+          };
+        },[nodes]);
+
+        const selectedNode = nodes.find(n=>n.id===selected) || null;
+
+        return (
+          <main style={{padding:16,display:'grid',gap:12}}>
+            <div className="card">
+              <h2 style={{margin:'0 0 8px'}}>AI-arbejdskortet</h2>
+              <div className="small">Tegn dit konkrete flow (Trigger → Trin → Outcome). Mærk roller og HITL.</div>
+            </div>
+
+            <div className="row">
+              <div className="card" style={{flex:'2 1 600px'}}>
+                <div className="controls" style={{marginBottom:10}}>
+                  <button onClick={addNode}>+ Tilføj trin</button>
+                  <button onClick={insertBefore} disabled={!selected}>+ Indsæt før valgt</button>
+                  <button onClick={exportPNG}>Eksportér PNG</button>
+                </div>
+                <canvas
+                  ref={canvasRef}
+                  width="1200" height="420"
+                  style={{width:'100%',height:420}}
+                  onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
+                  onDoubleClick={onDbl}
+                />
+              </div>
+
+              <div className="card" style={{flex:'1 1 280px'}}>
+                <div style={{fontWeight:600,marginBottom:6}}>Egenskaber</div>
+                {selectedNode ? (
+                  <div className="grid">
+                    <div>
+                      <label>Titel</label>
+                      <input type="text" value={selectedNode.title} onChange={e=>updateSelected({title:e.target.value})}/>
+                    </div>
+                    <div>
+                      <label>Rolle</label>
+                      <select value={selectedNode.role} onChange={e=>updateSelected({role:e.target.value})}>
+                        <option>Human</option>
+                        <option>Agent</option>
+                        <option>Hybrid</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label>Human-in-the-Loop</label><br/>
+                      <button onClick={()=>updateSelected({hitl:!selectedNode.hitl})}
+                        style={{borderColor:selectedNode.hitl?'var(--hitl)':'#1f2937'}}>
+                        {selectedNode.hitl?'✓ Aktiveret':'Slå til'}
+                      </button>
+                    </div>
+                    <div className="row">
+                      <button onClick={()=>setNodes(ns=>ns.filter(n=>n.id!==selectedNode.id))} style={{borderColor:'var(--bad)'}}>Slet trin</button>
+                    </div>
+                    <div className="small">Tip: Brug “Hybrid” når trinnet både har menneskelig input og agent-handling.</div>
+                  </div>
+                ) : (
+                  <div className="small">Vælg en node på canvas for at redigere.</div>
+                )}
+              </div>
+            </div>
+
+            {titleEditing && (
+              <TitleModal
+                initial={titleEditing.value}
+                onClose={()=>setTitleEditing(null)}
+                onSave={(val)=>{ setNodes(ns=>ns.map(n=>n.id===titleEditing.id?{...n,title:val}:n)); setTitleEditing(null); }}
+              />
+            )}
+          </main>
+        );
+      }
+
+      function TitleModal({initial,onSave,onClose}){
+        const [v,setV]=useState(initial);
+        return (
+          <div style={{
+            position:'fixed',inset:0,background:'rgba(0,0,0,.5)',display:'grid',placeItems:'center',zIndex:50
+          }}>
+            <div className="card" style={{minWidth:360}}>
+              <div style={{fontWeight:600,marginBottom:8}}>Redigér titel</div>
+              <input autoFocus type="text" value={v} onChange={e=>setV(e.target.value)} />
+              <div className="row" style={{marginTop:10}}>
+                <button onClick={()=>onSave(v)} style={{borderColor:'var(--accent)'}}>Gem</button>
+                <button onClick={onClose}>Annullér</button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // ---------- App ----------
+      function App(){
+        const [tab,setTab]=useState('test');
+        const exportJSON=()=>window.__exportBoardJSON?.();
+        const importJSON=()=>window.__importBoardJSON?.();
+
+        return (
+          <>
+            <Sidebar tab={tab} setTab={setTab} exportJSON={exportJSON} importJSON={importJSON}/>
+            {tab==='test' && <FitnessTest/>}
+            {tab==='journey' && <Journey/>}
+            {tab==='board' && <Board/>}
+          </>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+    </script>
+  </body>
+</html>
